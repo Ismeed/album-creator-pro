@@ -1,8 +1,9 @@
-import { useState } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { useState, useMemo } from "react";
+import { motion } from "framer-motion";
 import { Link, useParams, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { 
   ArrowLeft, 
   Copy, 
@@ -16,9 +17,12 @@ import {
   Users,
   DollarSign,
   Check,
-  X,
   Loader2,
-  ExternalLink
+  ExternalLink,
+  RefreshCw,
+  CheckCircle,
+  XCircle,
+  Clock
 } from "lucide-react";
 import {
   AlertDialog,
@@ -32,8 +36,9 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { useAlbum, useLockAlbum, useDeleteAlbum } from "@/hooks/useAlbums";
-import { useAlbumSubmissions, useUpdateSubmissionStatus, useDeleteSubmission } from "@/hooks/useSubmissions";
+import { useAlbumSubmissions, useUpdateSubmissionStatus, useDeleteSubmission, type SubmissionWithParticipant } from "@/hooks/useSubmissions";
 import { useToast } from "@/hooks/use-toast";
+import { SubmissionCard, SubmissionDetailSheet } from "@/components/album/SubmissionCard";
 
 const albumTypeLabels: Record<string, string> = {
   class: "Class",
@@ -54,9 +59,11 @@ const AlbumDetailPage = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
   const [showLinkCopied, setShowLinkCopied] = useState(false);
+  const [selectedSubmission, setSelectedSubmission] = useState<SubmissionWithParticipant | null>(null);
+  const [activeTab, setActiveTab] = useState("all");
 
-  const { data: album, isLoading: albumLoading, error: albumError } = useAlbum(albumId);
-  const { data: submissions = [], isLoading: submissionsLoading } = useAlbumSubmissions(albumId);
+  const { data: album, isLoading: albumLoading, error: albumError, refetch: refetchAlbum } = useAlbum(albumId);
+  const { data: submissions = [], isLoading: submissionsLoading, refetch: refetchSubmissions } = useAlbumSubmissions(albumId);
   const lockMutation = useLockAlbum();
   const deleteMutation = useDeleteAlbum();
   const updateStatusMutation = useUpdateSubmissionStatus();
@@ -64,11 +71,40 @@ const AlbumDetailPage = () => {
 
   const publicLink = `${window.location.origin}/submit/${albumId}`;
 
+  // Filter submissions based on active tab
+  const filteredSubmissions = useMemo(() => {
+    switch (activeTab) {
+      case "pending":
+        return submissions.filter(s => s.approval_status === "pending");
+      case "approved":
+        return submissions.filter(s => s.approval_status === "approved");
+      case "rejected":
+        return submissions.filter(s => s.approval_status === "rejected");
+      default:
+        return submissions;
+    }
+  }, [submissions, activeTab]);
+
+  // Stats
+  const stats = useMemo(() => ({
+    total: submissions.length,
+    pending: submissions.filter(s => s.approval_status === "pending").length,
+    approved: submissions.filter(s => s.approval_status === "approved").length,
+    rejected: submissions.filter(s => s.approval_status === "rejected").length,
+    paid: submissions.filter(s => s.payment_status === "successful").length,
+  }), [submissions]);
+
   const copyLink = async () => {
     await navigator.clipboard.writeText(publicLink);
     setShowLinkCopied(true);
     toast({ title: "Copied!", description: "Public upload link copied to clipboard." });
     setTimeout(() => setShowLinkCopied(false), 2000);
+  };
+
+  const handleRefresh = () => {
+    refetchAlbum();
+    refetchSubmissions();
+    toast({ title: "Refreshed", description: "Data has been updated." });
   };
 
   const handleToggleLock = async () => {
@@ -100,7 +136,7 @@ const AlbumDetailPage = () => {
   const handleApprove = async (submissionId: string) => {
     try {
       await updateStatusMutation.mutateAsync({ submissionId, approvalStatus: "approved" });
-      toast({ title: "Approved", description: "Submission has been approved." });
+      toast({ title: "Approved", description: "Submission has been approved and will appear in the final album." });
     } catch (error) {
       toast({ title: "Error", description: "Failed to approve submission.", variant: "destructive" });
     }
@@ -109,9 +145,19 @@ const AlbumDetailPage = () => {
   const handleReject = async (submissionId: string) => {
     try {
       await updateStatusMutation.mutateAsync({ submissionId, approvalStatus: "rejected" });
-      toast({ title: "Rejected", description: "Submission has been rejected." });
+      toast({ title: "Rejected", description: "Submission has been rejected and will be excluded from the album." });
     } catch (error) {
       toast({ title: "Error", description: "Failed to reject submission.", variant: "destructive" });
+    }
+  };
+
+  const handleDeleteSubmission = async (submissionId: string) => {
+    if (!albumId) return;
+    try {
+      await deleteSubmissionMutation.mutateAsync({ submissionId, albumId });
+      toast({ title: "Deleted", description: "Submission has been permanently removed." });
+    } catch (error) {
+      toast({ title: "Error", description: "Failed to delete submission.", variant: "destructive" });
     }
   };
 
@@ -143,6 +189,8 @@ const AlbumDetailPage = () => {
     ? new Date(album.submission_deadline) < new Date()
     : false;
 
+  const canAcceptSubmissions = !album.is_locked && !isDeadlinePassed;
+
   return (
     <main className="min-h-[100dvh] bg-background safe-top safe-bottom">
       {/* Header */}
@@ -155,64 +203,122 @@ const AlbumDetailPage = () => {
             <ArrowLeft className="w-5 h-5" />
           </Link>
           <h1 className="font-semibold text-foreground ml-2 truncate flex-1">{album.title}</h1>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={handleRefresh}
+            className="shrink-0"
+          >
+            <RefreshCw className="w-4 h-4" />
+          </Button>
         </div>
       </header>
 
       <div className="mobile-container py-6 space-y-6">
-        {/* Status & Info */}
+        {/* Status Banner */}
         <motion.div
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
+          className={`rounded-xl p-4 ${
+            album.is_locked 
+              ? "bg-muted border border-border" 
+              : canAcceptSubmissions
+              ? "bg-success/10 border border-success/20"
+              : "bg-destructive/10 border border-destructive/20"
+          }`}
+        >
+          <div className="flex items-center gap-3">
+            {album.is_locked ? (
+              <Lock className="w-5 h-5 text-muted-foreground" />
+            ) : canAcceptSubmissions ? (
+              <LockOpen className="w-5 h-5 text-success" />
+            ) : (
+              <Clock className="w-5 h-5 text-destructive" />
+            )}
+            <div>
+              <p className="font-medium text-foreground">
+                {album.is_locked 
+                  ? "Album Locked" 
+                  : canAcceptSubmissions 
+                  ? "Accepting Submissions" 
+                  : "Deadline Passed"}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                {album.is_locked 
+                  ? "No new submissions or edits allowed" 
+                  : canAcceptSubmissions 
+                  ? "Participants can submit their photos"
+                  : "Submission window has closed"}
+              </p>
+            </div>
+          </div>
+        </motion.div>
+
+        {/* Album Info */}
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.05 }}
           className="card-gradient rounded-xl p-5 shadow-card border border-border/50"
         >
-          <div className="flex items-center gap-2 mb-4">
-            {album.is_locked ? (
-              <Badge variant="secondary" className="bg-muted text-muted-foreground">
-                <Lock className="w-3 h-3 mr-1" />
-                Locked
-              </Badge>
-            ) : isDeadlinePassed ? (
-              <Badge variant="secondary" className="bg-destructive/10 text-destructive">
-                Deadline Passed
-              </Badge>
-            ) : (
-              <Badge variant="secondary" className="bg-success/10 text-success">
-                <LockOpen className="w-3 h-3 mr-1" />
-                Open for Submissions
-              </Badge>
-            )}
-          </div>
-
           <div className="space-y-3 text-sm">
             {album.institution_name && (
-              <div className="flex items-center gap-2 text-muted-foreground">
-                <Building2 className="w-4 h-4" />
+              <div className="flex items-center gap-2 text-foreground">
+                <Building2 className="w-4 h-4 text-muted-foreground" />
                 <span>{album.institution_name}</span>
               </div>
             )}
-            <div className="flex items-center gap-2 text-muted-foreground">
-              <Users className="w-4 h-4" />
+            <div className="flex items-center gap-2 text-foreground">
+              <Users className="w-4 h-4 text-muted-foreground" />
               <span>{albumTypeLabels[album.album_type] || album.album_type}</span>
             </div>
-            <div className="flex items-center gap-2 text-muted-foreground">
-              <DollarSign className="w-4 h-4" />
+            <div className="flex items-center gap-2 text-foreground">
+              <DollarSign className="w-4 h-4 text-muted-foreground" />
               <span>
                 {paymentModeLabels[album.payment_mode]}
                 {album.payment_mode === "participant_pays" && album.price_per_participant && (
-                  <> · ${album.price_per_participant}/person</>
+                  <span className="text-muted-foreground"> · ${album.price_per_participant}/person</span>
                 )}
               </span>
             </div>
             {album.submission_deadline && (
-              <div className="flex items-center gap-2 text-muted-foreground">
-                <Calendar className="w-4 h-4" />
-                <span>Deadline: {new Date(album.submission_deadline).toLocaleString()}</span>
+              <div className="flex items-center gap-2 text-foreground">
+                <Calendar className="w-4 h-4 text-muted-foreground" />
+                <span>
+                  Deadline: {new Date(album.submission_deadline).toLocaleString()}
+                  {isDeadlinePassed && (
+                    <Badge variant="outline" className="ml-2 text-destructive border-destructive/20">
+                      Passed
+                    </Badge>
+                  )}
+                </span>
               </div>
             )}
-            <div className="flex items-center gap-2 text-muted-foreground">
-              <Image className="w-4 h-4" />
-              <span>{album.submission_count} submission{album.submission_count !== 1 ? 's' : ''}</span>
-            </div>
+          </div>
+        </motion.div>
+
+        {/* Stats */}
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.1 }}
+          className="grid grid-cols-4 gap-2"
+        >
+          <div className="rounded-lg bg-muted/50 p-3 text-center">
+            <p className="text-2xl font-bold text-foreground">{stats.total}</p>
+            <p className="text-xs text-muted-foreground">Total</p>
+          </div>
+          <div className="rounded-lg bg-accent/10 p-3 text-center">
+            <p className="text-2xl font-bold text-accent">{stats.pending}</p>
+            <p className="text-xs text-muted-foreground">Pending</p>
+          </div>
+          <div className="rounded-lg bg-success/10 p-3 text-center">
+            <p className="text-2xl font-bold text-success">{stats.approved}</p>
+            <p className="text-xs text-muted-foreground">Approved</p>
+          </div>
+          <div className="rounded-lg bg-destructive/10 p-3 text-center">
+            <p className="text-2xl font-bold text-destructive">{stats.rejected}</p>
+            <p className="text-xs text-muted-foreground">Rejected</p>
           </div>
         </motion.div>
 
@@ -220,7 +326,7 @@ const AlbumDetailPage = () => {
         <motion.div
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.05 }}
+          transition={{ delay: 0.15 }}
           className="card-gradient rounded-xl p-5 shadow-card border border-border/50"
         >
           <h3 className="font-semibold text-foreground mb-3 flex items-center gap-2">
@@ -238,40 +344,60 @@ const AlbumDetailPage = () => {
               variant={showLinkCopied ? "accent" : "outline"}
               size="sm"
               onClick={copyLink}
-              disabled={album.is_locked}
               className="shrink-0"
             >
               {showLinkCopied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
             </Button>
           </div>
-          {album.is_locked && (
+          {!canAcceptSubmissions && (
             <p className="text-xs text-muted-foreground mt-2">
-              Album is locked. Unlock to allow submissions.
+              {album.is_locked ? "Album is locked." : "Deadline has passed."} Link is inactive.
             </p>
           )}
         </motion.div>
 
-        {/* Actions */}
+        {/* Album Actions */}
         <motion.div
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.1 }}
+          transition={{ delay: 0.2 }}
           className="grid grid-cols-2 gap-3"
         >
-          <Button
-            variant="outline"
-            onClick={handleToggleLock}
-            disabled={lockMutation.isPending}
-          >
-            {lockMutation.isPending ? (
-              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-            ) : album.is_locked ? (
-              <LockOpen className="w-4 h-4 mr-2" />
-            ) : (
-              <Lock className="w-4 h-4 mr-2" />
-            )}
-            {album.is_locked ? "Unlock" : "Lock"}
-          </Button>
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <Button
+                variant="outline"
+                disabled={lockMutation.isPending}
+              >
+                {lockMutation.isPending ? (
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                ) : album.is_locked ? (
+                  <LockOpen className="w-4 h-4 mr-2" />
+                ) : (
+                  <Lock className="w-4 h-4 mr-2" />
+                )}
+                {album.is_locked ? "Unlock" : "Lock"}
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent className="max-w-sm mx-4">
+              <AlertDialogHeader>
+                <AlertDialogTitle>
+                  {album.is_locked ? "Unlock album?" : "Lock album?"}
+                </AlertDialogTitle>
+                <AlertDialogDescription>
+                  {album.is_locked 
+                    ? "This will allow participants to submit new photos again."
+                    : "This will prevent any new submissions or edits. Locking is required before generating the final album."}
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogAction onClick={handleToggleLock}>
+                  {album.is_locked ? "Unlock" : "Lock Album"}
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
 
           <Button asChild variant="outline">
             <Link to={`/album/${album.id}/edit`}>
@@ -291,7 +417,7 @@ const AlbumDetailPage = () => {
               <AlertDialogHeader>
                 <AlertDialogTitle>Delete this album?</AlertDialogTitle>
                 <AlertDialogDescription>
-                  This will permanently delete the album and all {album.submission_count} submission{album.submission_count !== 1 ? 's' : ''}. This action cannot be undone.
+                  This will permanently delete the album and all {stats.total} submission{stats.total !== 1 ? 's' : ''}. This action cannot be undone.
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
@@ -315,89 +441,74 @@ const AlbumDetailPage = () => {
         <motion.div
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.15 }}
+          transition={{ delay: 0.25 }}
         >
-          <h3 className="font-semibold text-foreground mb-4">
-            Submissions ({submissions.length})
-          </h3>
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+            <TabsList className="w-full grid grid-cols-4 mb-4">
+              <TabsTrigger value="all" className="text-xs">
+                All ({stats.total})
+              </TabsTrigger>
+              <TabsTrigger value="pending" className="text-xs">
+                <Clock className="w-3 h-3 mr-1" />
+                {stats.pending}
+              </TabsTrigger>
+              <TabsTrigger value="approved" className="text-xs">
+                <CheckCircle className="w-3 h-3 mr-1" />
+                {stats.approved}
+              </TabsTrigger>
+              <TabsTrigger value="rejected" className="text-xs">
+                <XCircle className="w-3 h-3 mr-1" />
+                {stats.rejected}
+              </TabsTrigger>
+            </TabsList>
 
-          {submissionsLoading ? (
-            <div className="flex justify-center py-8">
-              <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
-            </div>
-          ) : submissions.length === 0 ? (
-            <div className="text-center py-8 text-muted-foreground">
-              <Image className="w-12 h-12 mx-auto mb-3 opacity-50" />
-              <p>No submissions yet</p>
-              <p className="text-sm">Share the public link to collect photos.</p>
-            </div>
-          ) : (
-            <div className="space-y-3">
-              {submissions.map((submission) => (
-                <div
-                  key={submission.id}
-                  className="card-gradient rounded-xl p-4 shadow-card border border-border/50"
-                >
-                  <div className="flex gap-3">
-                    <div className="w-16 h-16 rounded-lg bg-muted overflow-hidden shrink-0">
-                      <img
-                        src={submission.photo_url}
-                        alt="Submission"
-                        className="w-full h-full object-cover"
-                      />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="font-medium text-foreground truncate">
-                        {submission.participant?.full_name || "Unknown"}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        {new Date(submission.submitted_at).toLocaleString()}
-                      </p>
-                      <Badge
-                        variant="outline"
-                        className={`mt-1 text-xs ${
-                          submission.approval_status === "approved"
-                            ? "bg-success/10 text-success border-success/20"
-                            : submission.approval_status === "rejected"
-                            ? "bg-destructive/10 text-destructive border-destructive/20"
-                            : ""
-                        }`}
-                      >
-                        {submission.approval_status}
-                      </Badge>
-                    </div>
-                  </div>
-
-                  {submission.approval_status === "pending" && (
-                    <div className="flex gap-2 mt-3">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="flex-1 text-success border-success/20 hover:bg-success/10"
-                        onClick={() => handleApprove(submission.id)}
-                        disabled={updateStatusMutation.isPending}
-                      >
-                        <Check className="w-4 h-4 mr-1" />
-                        Approve
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="flex-1 text-destructive border-destructive/20 hover:bg-destructive/10"
-                        onClick={() => handleReject(submission.id)}
-                        disabled={updateStatusMutation.isPending}
-                      >
-                        <X className="w-4 h-4 mr-1" />
-                        Reject
-                      </Button>
-                    </div>
+            <TabsContent value={activeTab} className="mt-0">
+              {submissionsLoading ? (
+                <div className="flex justify-center py-8">
+                  <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+                </div>
+              ) : filteredSubmissions.length === 0 ? (
+                <div className="text-center py-8 text-muted-foreground">
+                  <Image className="w-12 h-12 mx-auto mb-3 opacity-50" />
+                  <p>No {activeTab !== "all" ? activeTab : ""} submissions</p>
+                  {activeTab === "all" && (
+                    <p className="text-sm">Share the public link to collect photos.</p>
                   )}
                 </div>
-              ))}
-            </div>
-          )}
+              ) : (
+                <div className="space-y-3">
+                  {filteredSubmissions.map((submission) => (
+                    <SubmissionCard
+                      key={submission.id}
+                      submission={submission}
+                      isLocked={album.is_locked}
+                      onApprove={handleApprove}
+                      onReject={handleReject}
+                      onDelete={handleDeleteSubmission}
+                      onViewDetails={setSelectedSubmission}
+                      isUpdating={updateStatusMutation.isPending}
+                      isDeleting={deleteSubmissionMutation.isPending}
+                    />
+                  ))}
+                </div>
+              )}
+            </TabsContent>
+          </Tabs>
         </motion.div>
       </div>
+
+      {/* Submission Detail Sheet */}
+      <SubmissionDetailSheet
+        submission={selectedSubmission}
+        isOpen={!!selectedSubmission}
+        onClose={() => setSelectedSubmission(null)}
+        isLocked={album.is_locked}
+        onApprove={handleApprove}
+        onReject={handleReject}
+        onDelete={handleDeleteSubmission}
+        isUpdating={updateStatusMutation.isPending}
+        isDeleting={deleteSubmissionMutation.isPending}
+      />
     </main>
   );
 };

@@ -1,4 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import type { Tables } from "@/integrations/supabase/types";
 
@@ -10,6 +11,36 @@ export interface SubmissionWithParticipant extends Submission {
 }
 
 export function useAlbumSubmissions(albumId: string | undefined) {
+  const queryClient = useQueryClient();
+
+  // Set up real-time subscription
+  useEffect(() => {
+    if (!albumId) return;
+
+    const channel = supabase
+      .channel(`submissions-${albumId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'submissions',
+          filter: `album_id=eq.${albumId}`,
+        },
+        () => {
+          // Invalidate and refetch on any change
+          queryClient.invalidateQueries({ queryKey: ["submissions", albumId] });
+          queryClient.invalidateQueries({ queryKey: ["albums"] });
+          queryClient.invalidateQueries({ queryKey: ["album", albumId] });
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [albumId, queryClient]);
+
   return useQuery({
     queryKey: ["submissions", albumId],
     queryFn: async (): Promise<SubmissionWithParticipant[]> => {
@@ -58,6 +89,7 @@ export function useUpdateSubmissionStatus() {
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["submissions", data.album_id] });
+      queryClient.invalidateQueries({ queryKey: ["album", data.album_id] });
     },
   });
 }
@@ -78,6 +110,7 @@ export function useDeleteSubmission() {
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["submissions", data.albumId] });
       queryClient.invalidateQueries({ queryKey: ["albums"] });
+      queryClient.invalidateQueries({ queryKey: ["album", data.albumId] });
     },
   });
 }
