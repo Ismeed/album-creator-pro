@@ -14,16 +14,224 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      albums: {
+        Row: {
+          album_type: Database["public"]["Enums"]["album_type"]
+          created_at: string
+          id: string
+          institution_name: string | null
+          is_locked: boolean
+          organizer_id: string
+          payment_mode: Database["public"]["Enums"]["payment_mode"]
+          price_per_participant: number | null
+          submission_deadline: string | null
+          title: string
+        }
+        Insert: {
+          album_type?: Database["public"]["Enums"]["album_type"]
+          created_at?: string
+          id?: string
+          institution_name?: string | null
+          is_locked?: boolean
+          organizer_id: string
+          payment_mode?: Database["public"]["Enums"]["payment_mode"]
+          price_per_participant?: number | null
+          submission_deadline?: string | null
+          title: string
+        }
+        Update: {
+          album_type?: Database["public"]["Enums"]["album_type"]
+          created_at?: string
+          id?: string
+          institution_name?: string | null
+          is_locked?: boolean
+          organizer_id?: string
+          payment_mode?: Database["public"]["Enums"]["payment_mode"]
+          price_per_participant?: number | null
+          submission_deadline?: string | null
+          title?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "albums_organizer_id_fkey"
+            columns: ["organizer_id"]
+            isOneToOne: false
+            referencedRelation: "organizers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      organizers: {
+        Row: {
+          created_at: string
+          email: string
+          full_name: string
+          id: string
+        }
+        Insert: {
+          created_at?: string
+          email: string
+          full_name: string
+          id: string
+        }
+        Update: {
+          created_at?: string
+          email?: string
+          full_name?: string
+          id?: string
+        }
+        Relationships: []
+      }
+      participants: {
+        Row: {
+          created_at: string
+          department_or_class: string | null
+          full_name: string
+          id: string
+          identifier: string | null
+        }
+        Insert: {
+          created_at?: string
+          department_or_class?: string | null
+          full_name: string
+          id?: string
+          identifier?: string | null
+        }
+        Update: {
+          created_at?: string
+          department_or_class?: string | null
+          full_name?: string
+          id?: string
+          identifier?: string | null
+        }
+        Relationships: []
+      }
+      payments: {
+        Row: {
+          album_id: string
+          amount: number
+          id: string
+          paid_at: string | null
+          payment_channel: string | null
+          payment_reference: string | null
+          status: Database["public"]["Enums"]["payment_status"]
+          submission_id: string | null
+        }
+        Insert: {
+          album_id: string
+          amount: number
+          id?: string
+          paid_at?: string | null
+          payment_channel?: string | null
+          payment_reference?: string | null
+          status?: Database["public"]["Enums"]["payment_status"]
+          submission_id?: string | null
+        }
+        Update: {
+          album_id?: string
+          amount?: number
+          id?: string
+          paid_at?: string | null
+          payment_channel?: string | null
+          payment_reference?: string | null
+          status?: Database["public"]["Enums"]["payment_status"]
+          submission_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "payments_album_id_fkey"
+            columns: ["album_id"]
+            isOneToOne: false
+            referencedRelation: "albums"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payments_submission_id_fkey"
+            columns: ["submission_id"]
+            isOneToOne: false
+            referencedRelation: "submissions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      submissions: {
+        Row: {
+          album_id: string
+          approval_status: Database["public"]["Enums"]["approval_status"]
+          background_color: string | null
+          id: string
+          participant_id: string
+          payment_status: Database["public"]["Enums"]["payment_status"]
+          photo_url: string
+          processed_photo_url: string | null
+          submitted_at: string
+        }
+        Insert: {
+          album_id: string
+          approval_status?: Database["public"]["Enums"]["approval_status"]
+          background_color?: string | null
+          id?: string
+          participant_id: string
+          payment_status?: Database["public"]["Enums"]["payment_status"]
+          photo_url: string
+          processed_photo_url?: string | null
+          submitted_at?: string
+        }
+        Update: {
+          album_id?: string
+          approval_status?: Database["public"]["Enums"]["approval_status"]
+          background_color?: string | null
+          id?: string
+          participant_id?: string
+          payment_status?: Database["public"]["Enums"]["payment_status"]
+          photo_url?: string
+          processed_photo_url?: string | null
+          submitted_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "submissions_album_id_fkey"
+            columns: ["album_id"]
+            isOneToOne: false
+            referencedRelation: "albums"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "submissions_participant_id_fkey"
+            columns: ["participant_id"]
+            isOneToOne: false
+            referencedRelation: "participants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      get_album_id_from_submission: {
+        Args: { _submission_id: string }
+        Returns: string
+      }
+      is_album_owner: { Args: { _album_id: string }; Returns: boolean }
+      is_payment_owner: { Args: { _payment_id: string }; Returns: boolean }
+      is_submission_owner: {
+        Args: { _submission_id: string }
+        Returns: boolean
+      }
     }
     Enums: {
-      [_ in never]: never
+      album_type:
+        | "class"
+        | "department"
+        | "faculty"
+        | "training"
+        | "bootcamp"
+        | "other"
+      approval_status: "pending" | "approved" | "rejected"
+      payment_mode: "organizer_pays" | "participant_pays"
+      payment_status: "pending" | "successful" | "failed"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -150,6 +358,18 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      album_type: [
+        "class",
+        "department",
+        "faculty",
+        "training",
+        "bootcamp",
+        "other",
+      ],
+      approval_status: ["pending", "approved", "rejected"],
+      payment_mode: ["organizer_pays", "participant_pays"],
+      payment_status: ["pending", "successful", "failed"],
+    },
   },
 } as const
