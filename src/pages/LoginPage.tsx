@@ -1,30 +1,319 @@
 import { useState } from "react";
 import { motion } from "framer-motion";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useLocation } from "react-router-dom";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { ArrowLeft, Mail, Lock, Eye, EyeOff } from "lucide-react";
+import { ArrowLeft, Mail, Lock, Eye, EyeOff, User, Loader2 } from "lucide-react";
+import { useAuth } from "@/contexts/AuthContext";
+import { useToast } from "@/hooks/use-toast";
+
+// Validation schemas
+const loginSchema = z.object({
+  email: z
+    .string()
+    .trim()
+    .min(1, "Email is required")
+    .email("Please enter a valid email")
+    .max(255, "Email is too long"),
+  password: z
+    .string()
+    .min(1, "Password is required")
+    .min(6, "Password must be at least 6 characters")
+    .max(72, "Password is too long"),
+});
+
+const signupSchema = z.object({
+  email: z
+    .string()
+    .trim()
+    .min(1, "Email is required")
+    .email("Please enter a valid email")
+    .max(255, "Email is too long"),
+  password: z
+    .string()
+    .min(1, "Password is required")
+    .min(6, "Password must be at least 6 characters")
+    .max(72, "Password is too long"),
+  fullName: z
+    .string()
+    .trim()
+    .min(1, "Full name is required")
+    .min(2, "Name must be at least 2 characters")
+    .max(100, "Name is too long"),
+});
+
+type LoginFormData = z.infer<typeof loginSchema>;
+type SignupFormData = z.infer<typeof signupSchema>;
+
+/**
+ * Maps auth error messages to user-friendly text
+ */
+function getAuthErrorMessage(message: string): string {
+  if (message.includes("Invalid login credentials")) {
+    return "Invalid email or password. Please try again.";
+  }
+  if (message.includes("User already registered")) {
+    return "An account with this email already exists.";
+  }
+  if (message.includes("Email not confirmed")) {
+    return "Please verify your email address.";
+  }
+  if (message.includes("Password should be")) {
+    return "Password must be at least 6 characters.";
+  }
+  return message;
+}
+
+const LoginForm = () => {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const { signIn } = useAuth();
+  const { toast } = useToast();
+  const [showPassword, setShowPassword] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const from = location.state?.from?.pathname || "/dashboard";
+
+  const {
+    register,
+    handleSubmit,
+    formState: { errors },
+  } = useForm<LoginFormData>({
+    resolver: zodResolver(loginSchema),
+    defaultValues: { email: "", password: "" },
+  });
+
+  const onSubmit = async (data: LoginFormData) => {
+    setIsSubmitting(true);
+    const { error } = await signIn(data.email, data.password);
+    setIsSubmitting(false);
+
+    if (error) {
+      toast({
+        title: "Login failed",
+        description: getAuthErrorMessage(error.message),
+        variant: "destructive",
+      });
+      return;
+    }
+
+    toast({
+      title: "Welcome back!",
+      description: "You've successfully signed in.",
+    });
+    navigate(from, { replace: true });
+  };
+
+  return (
+    <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
+      {/* Email */}
+      <div className="space-y-2">
+        <Label htmlFor="email" className="text-sm font-medium">
+          Email
+        </Label>
+        <div className="relative">
+          <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
+          <Input
+            id="email"
+            type="email"
+            placeholder="you@example.com"
+            {...register("email")}
+            className="pl-11 h-12"
+          />
+        </div>
+        {errors.email && (
+          <p className="text-sm text-destructive">{errors.email.message}</p>
+        )}
+      </div>
+
+      {/* Password */}
+      <div className="space-y-2">
+        <Label htmlFor="password" className="text-sm font-medium">
+          Password
+        </Label>
+        <div className="relative">
+          <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
+          <Input
+            id="password"
+            type={showPassword ? "text" : "password"}
+            placeholder="••••••••"
+            {...register("password")}
+            className="pl-11 pr-11 h-12"
+          />
+          <button
+            type="button"
+            onClick={() => setShowPassword(!showPassword)}
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+          >
+            {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+          </button>
+        </div>
+        {errors.password && (
+          <p className="text-sm text-destructive">{errors.password.message}</p>
+        )}
+      </div>
+
+      {/* Submit Button */}
+      <Button
+        type="submit"
+        variant="accent"
+        size="lg"
+        className="w-full"
+        disabled={isSubmitting}
+      >
+        {isSubmitting ? (
+          <>
+            <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+            Signing in...
+          </>
+        ) : (
+          "Sign In"
+        )}
+      </Button>
+    </form>
+  );
+};
+
+const SignupForm = () => {
+  const navigate = useNavigate();
+  const { signUp } = useAuth();
+  const { toast } = useToast();
+  const [showPassword, setShowPassword] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const {
+    register,
+    handleSubmit,
+    formState: { errors },
+  } = useForm<SignupFormData>({
+    resolver: zodResolver(signupSchema),
+    defaultValues: { email: "", password: "", fullName: "" },
+  });
+
+  const onSubmit = async (data: SignupFormData) => {
+    setIsSubmitting(true);
+    const { error } = await signUp(data.email, data.password, data.fullName);
+    setIsSubmitting(false);
+
+    if (error) {
+      toast({
+        title: "Registration failed",
+        description: getAuthErrorMessage(error.message),
+        variant: "destructive",
+      });
+      return;
+    }
+
+    toast({
+      title: "Account created!",
+      description: "You can now start creating albums.",
+    });
+    navigate("/dashboard", { replace: true });
+  };
+
+  return (
+    <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
+      {/* Full Name */}
+      <div className="space-y-2">
+        <Label htmlFor="fullName" className="text-sm font-medium">
+          Full Name
+        </Label>
+        <div className="relative">
+          <User className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
+          <Input
+            id="fullName"
+            type="text"
+            placeholder="Your full name"
+            {...register("fullName")}
+            className="pl-11 h-12"
+          />
+        </div>
+        {errors.fullName && (
+          <p className="text-sm text-destructive">{errors.fullName.message}</p>
+        )}
+      </div>
+
+      {/* Email */}
+      <div className="space-y-2">
+        <Label htmlFor="signup-email" className="text-sm font-medium">
+          Email
+        </Label>
+        <div className="relative">
+          <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
+          <Input
+            id="signup-email"
+            type="email"
+            placeholder="you@example.com"
+            {...register("email")}
+            className="pl-11 h-12"
+          />
+        </div>
+        {errors.email && (
+          <p className="text-sm text-destructive">{errors.email.message}</p>
+        )}
+      </div>
+
+      {/* Password */}
+      <div className="space-y-2">
+        <Label htmlFor="signup-password" className="text-sm font-medium">
+          Password
+        </Label>
+        <div className="relative">
+          <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
+          <Input
+            id="signup-password"
+            type={showPassword ? "text" : "password"}
+            placeholder="••••••••"
+            {...register("password")}
+            className="pl-11 pr-11 h-12"
+          />
+          <button
+            type="button"
+            onClick={() => setShowPassword(!showPassword)}
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+          >
+            {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+          </button>
+        </div>
+        {errors.password && (
+          <p className="text-sm text-destructive">{errors.password.message}</p>
+        )}
+      </div>
+
+      {/* Submit Button */}
+      <Button
+        type="submit"
+        variant="accent"
+        size="lg"
+        className="w-full"
+        disabled={isSubmitting}
+      >
+        {isSubmitting ? (
+          <>
+            <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+            Creating account...
+          </>
+        ) : (
+          "Create Account"
+        )}
+      </Button>
+    </form>
+  );
+};
 
 const LoginPage = () => {
-  const navigate = useNavigate();
   const [isLogin, setIsLogin] = useState(true);
-  const [showPassword, setShowPassword] = useState(false);
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    // For now, just navigate to dashboard
-    navigate("/dashboard");
-  };
 
   return (
     <main className="min-h-[100dvh] bg-background flex flex-col safe-top safe-bottom">
       {/* Header */}
       <header className="p-4">
-        <Link 
-          to="/" 
+        <Link
+          to="/"
           className="inline-flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors"
         >
           <ArrowLeft className="w-5 h-5" />
@@ -47,76 +336,14 @@ const LoginPage = () => {
               {isLogin ? "Welcome back" : "Create account"}
             </h1>
             <p className="text-muted-foreground text-sm">
-              {isLogin 
-                ? "Sign in to manage your albums" 
+              {isLogin
+                ? "Sign in to manage your albums"
                 : "Start creating beautiful photo albums"}
             </p>
           </div>
 
           {/* Form */}
-          <form onSubmit={handleSubmit} className="space-y-5">
-            <div className="space-y-2">
-              <Label htmlFor="email" className="text-sm font-medium">
-                Email
-              </Label>
-              <div className="relative">
-                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
-                <Input
-                  id="email"
-                  type="email"
-                  placeholder="you@example.com"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="pl-11 h-12"
-                  required
-                />
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="password" className="text-sm font-medium">
-                Password
-              </Label>
-              <div className="relative">
-                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
-                <Input
-                  id="password"
-                  type={showPassword ? "text" : "password"}
-                  placeholder="••••••••"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="pl-11 pr-11 h-12"
-                  required
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
-                >
-                  {showPassword ? (
-                    <EyeOff className="w-5 h-5" />
-                  ) : (
-                    <Eye className="w-5 h-5" />
-                  )}
-                </button>
-              </div>
-            </div>
-
-            {isLogin && (
-              <div className="text-right">
-                <button
-                  type="button"
-                  className="text-sm text-accent hover:underline"
-                >
-                  Forgot password?
-                </button>
-              </div>
-            )}
-
-            <Button type="submit" variant="accent" size="lg" className="w-full">
-              {isLogin ? "Sign In" : "Create Account"}
-            </Button>
-          </form>
+          {isLogin ? <LoginForm /> : <SignupForm />}
 
           {/* Toggle */}
           <div className="text-center">
