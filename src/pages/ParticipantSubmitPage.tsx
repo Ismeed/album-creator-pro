@@ -1,68 +1,192 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import { useParams } from "react-router-dom";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Progress } from "@/components/ui/progress";
 import { 
   Camera, 
   Upload, 
   User, 
-  Mail, 
+  Building2,
+  Hash,
   Check, 
-  Image as ImageIcon,
   X,
-  Loader2 
+  Loader2,
+  AlertCircle,
+  Lock,
+  Clock,
+  Calendar
 } from "lucide-react";
+import { usePublicAlbum, useAlbumStatus } from "@/hooks/usePublicAlbum";
+import { useSubmitPhoto } from "@/hooks/useSubmitPhoto";
 
-// This would come from URL params in real implementation
-const albumInfo = {
-  title: "Class of 2025 - Computer Science",
-  organizerName: "Dr. Smith",
-  description: "Please upload your graduation photo for the yearbook!",
-};
+const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
+const ACCEPTED_TYPES = ["image/jpeg", "image/jpg", "image/png", "image/webp"];
+
+const formSchema = z.object({
+  fullName: z.string().trim().min(2, "Name must be at least 2 characters").max(100, "Name is too long"),
+  departmentOrClass: z.string().trim().min(1, "Department/Class is required").max(100, "Too long"),
+  identifier: z.string().trim().max(50, "ID is too long").optional(),
+});
+
+type FormData = z.infer<typeof formSchema>;
 
 const ParticipantSubmitPage = () => {
+  const { albumId } = useParams<{ albumId: string }>();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [step, setStep] = useState<"upload" | "details" | "success">("upload");
-  const [selectedImage, setSelectedImage] = useState<string | null>(null);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [formData, setFormData] = useState({
-    fullName: "",
-    email: "",
-    studentId: "",
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [fileError, setFileError] = useState<string | null>(null);
+
+  const { data: album, isLoading: albumLoading, error: albumError } = usePublicAlbum(albumId);
+  const albumStatus = useAlbumStatus(album);
+  const submitMutation = useSubmitPhoto(album ?? null);
+
+  const {
+    register,
+    handleSubmit,
+    formState: { errors },
+    watch,
+  } = useForm<FormData>({
+    resolver: zodResolver(formSchema),
+    defaultValues: {
+      fullName: "",
+      departmentOrClass: "",
+      identifier: "",
+    },
   });
 
-  const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const formValues = watch();
+
+  const validateFile = useCallback((file: File): string | null => {
+    if (!ACCEPTED_TYPES.includes(file.type)) {
+      return "Please upload a JPG or PNG image.";
+    }
+    if (file.size > MAX_FILE_SIZE) {
+      return "Photo must be under 10MB.";
+    }
+    return null;
+  }, []);
+
+  const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
+    setFileError(null);
+
     if (file) {
+      const error = validateFile(file);
+      if (error) {
+        setFileError(error);
+        return;
+      }
+
+      setSelectedFile(file);
       const reader = new FileReader();
       reader.onloadend = () => {
-        setSelectedImage(reader.result as string);
+        setPreviewUrl(reader.result as string);
         setStep("details");
       };
       reader.readAsDataURL(file);
     }
+  }, [validateFile]);
+
+  const handleClearPhoto = useCallback(() => {
+    setSelectedFile(null);
+    setPreviewUrl(null);
+    setFileError(null);
+    setStep("upload");
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+  }, []);
+
+  const onSubmit = async (data: FormData) => {
+    if (!selectedFile) return;
+
+    try {
+      await submitMutation.mutateAsync({
+        fullName: data.fullName,
+        departmentOrClass: data.departmentOrClass,
+        identifier: data.identifier,
+        photoFile: selectedFile,
+      });
+      setStep("success");
+    } catch (error) {
+      // Error is handled by the mutation
+    }
   };
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setFormData(prev => ({
-      ...prev,
-      [e.target.name]: e.target.value,
-    }));
-  };
+  const canSubmit = formValues.fullName.length >= 2 && formValues.departmentOrClass.length >= 1;
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsSubmitting(true);
-    
-    // Simulate upload
-    await new Promise(resolve => setTimeout(resolve, 1500));
-    
-    setIsSubmitting(false);
-    setStep("success");
-  };
+  // Loading state
+  if (albumLoading) {
+    return (
+      <main className="min-h-[100dvh] bg-background safe-top safe-bottom flex items-center justify-center">
+        <Loader2 className="w-8 h-8 animate-spin text-accent" />
+      </main>
+    );
+  }
 
-  const canSubmit = formData.fullName.length > 0 && formData.email.length > 0;
+  // Album not found
+  if (albumError || !album) {
+    return (
+      <main className="min-h-[100dvh] bg-background safe-top safe-bottom">
+        <div className="mobile-container py-12 text-center">
+          <div className="w-16 h-16 rounded-full bg-destructive/10 flex items-center justify-center mx-auto mb-4">
+            <AlertCircle className="w-8 h-8 text-destructive" />
+          </div>
+          <h1 className="text-xl font-bold text-foreground mb-2">Album Not Found</h1>
+          <p className="text-muted-foreground">
+            This album doesn't exist or the link is invalid.
+          </p>
+        </div>
+      </main>
+    );
+  }
+
+  // Album closed
+  if (!albumStatus.isOpen) {
+    return (
+      <main className="min-h-[100dvh] bg-background safe-top safe-bottom">
+        <header className="bg-primary text-primary-foreground py-6">
+          <div className="mobile-container text-center">
+            <span className="text-accent font-bold text-lg">OLEX</span>
+            <h1 className="text-xl font-bold mt-2">{album.title}</h1>
+            {album.institution_name && (
+              <p className="text-primary-foreground/70 text-sm mt-1">
+                {album.institution_name}
+              </p>
+            )}
+          </div>
+        </header>
+        
+        <div className="mobile-container py-12 text-center">
+          <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center mx-auto mb-4">
+            {albumStatus.reason === "locked" ? (
+              <Lock className="w-8 h-8 text-muted-foreground" />
+            ) : (
+              <Clock className="w-8 h-8 text-muted-foreground" />
+            )}
+          </div>
+          <h2 className="text-xl font-bold text-foreground mb-2">Submissions Closed</h2>
+          <p className="text-muted-foreground max-w-xs mx-auto">
+            {albumStatus.message}
+          </p>
+          {album.submission_deadline && albumStatus.reason === "deadline_passed" && (
+            <div className="mt-4 flex items-center justify-center gap-2 text-sm text-muted-foreground">
+              <Calendar className="w-4 h-4" />
+              <span>Deadline was {new Date(album.submission_deadline).toLocaleDateString()}</span>
+            </div>
+          )}
+        </div>
+      </main>
+    );
+  }
 
   return (
     <main className="min-h-[100dvh] bg-background safe-top safe-bottom">
@@ -70,10 +194,18 @@ const ParticipantSubmitPage = () => {
       <header className="bg-primary text-primary-foreground py-6">
         <div className="mobile-container text-center">
           <span className="text-accent font-bold text-lg">OLEX</span>
-          <h1 className="text-xl font-bold mt-2">{albumInfo.title}</h1>
-          <p className="text-primary-foreground/70 text-sm mt-1">
-            Organized by {albumInfo.organizerName}
-          </p>
+          <h1 className="text-xl font-bold mt-2">{album.title}</h1>
+          {album.institution_name && (
+            <p className="text-primary-foreground/70 text-sm mt-1">
+              {album.institution_name}
+            </p>
+          )}
+          {album.submission_deadline && (
+            <div className="mt-2 inline-flex items-center gap-1.5 text-xs text-primary-foreground/60 bg-primary-foreground/10 px-3 py-1 rounded-full">
+              <Clock className="w-3 h-3" />
+              <span>Submit by {new Date(album.submission_deadline).toLocaleDateString()}</span>
+            </div>
+          )}
         </div>
       </header>
 
@@ -93,24 +225,30 @@ const ParticipantSubmitPage = () => {
                   Upload Your Photo
                 </h2>
                 <p className="text-sm text-muted-foreground mt-2">
-                  {albumInfo.description}
+                  Take a clear photo with good lighting
                 </p>
               </div>
 
               {/* Upload area */}
               <div 
                 onClick={() => fileInputRef.current?.click()}
-                className="aspect-[3/4] max-w-xs mx-auto rounded-2xl border-2 border-dashed border-border hover:border-accent hover:bg-accent/5 transition-colors cursor-pointer flex flex-col items-center justify-center gap-4 p-6"
+                className={`aspect-[3/4] max-w-xs mx-auto rounded-2xl border-2 border-dashed transition-colors cursor-pointer flex flex-col items-center justify-center gap-4 p-6 ${
+                  fileError 
+                    ? "border-destructive bg-destructive/5" 
+                    : "border-border hover:border-accent hover:bg-accent/5"
+                }`}
               >
-                <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center">
-                  <Camera className="w-8 h-8 text-muted-foreground" />
+                <div className={`w-16 h-16 rounded-full flex items-center justify-center ${
+                  fileError ? "bg-destructive/10" : "bg-muted"
+                }`}>
+                  <Camera className={`w-8 h-8 ${fileError ? "text-destructive" : "text-muted-foreground"}`} />
                 </div>
                 <div className="text-center">
                   <p className="font-medium text-foreground">
                     Tap to upload photo
                   </p>
                   <p className="text-xs text-muted-foreground mt-1">
-                    JPG, PNG up to 10MB
+                    JPG or PNG, max 10MB
                   </p>
                 </div>
                 <Button variant="accent" size="sm">
@@ -119,11 +257,23 @@ const ParticipantSubmitPage = () => {
                 </Button>
               </div>
 
+              {fileError && (
+                <motion.p
+                  initial={{ opacity: 0, y: -10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="text-sm text-destructive text-center flex items-center justify-center gap-2"
+                >
+                  <AlertCircle className="w-4 h-4" />
+                  {fileError}
+                </motion.p>
+              )}
+
               <input
                 ref={fileInputRef}
                 type="file"
-                accept="image/*"
-                onChange={handleImageSelect}
+                accept="image/jpeg,image/jpg,image/png,image/webp"
+                capture="environment"
+                onChange={handleFileSelect}
                 className="hidden"
               />
             </motion.div>
@@ -137,22 +287,19 @@ const ParticipantSubmitPage = () => {
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -20 }}
             >
-              <form onSubmit={handleSubmit} className="space-y-6">
+              <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
                 {/* Photo preview */}
                 <div className="relative aspect-[3/4] max-w-[200px] mx-auto rounded-xl overflow-hidden shadow-card">
-                  {selectedImage && (
+                  {previewUrl && (
                     <img 
-                      src={selectedImage} 
+                      src={previewUrl} 
                       alt="Preview" 
                       className="w-full h-full object-cover"
                     />
                   )}
                   <button
                     type="button"
-                    onClick={() => {
-                      setSelectedImage(null);
-                      setStep("upload");
-                    }}
+                    onClick={handleClearPhoto}
                     className="absolute top-2 right-2 w-8 h-8 rounded-full bg-background/80 backdrop-blur flex items-center justify-center text-foreground hover:bg-background transition-colors"
                   >
                     <X className="w-4 h-4" />
@@ -175,54 +322,91 @@ const ParticipantSubmitPage = () => {
                       <User className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
                       <Input
                         id="fullName"
-                        name="fullName"
                         placeholder="Your full name"
-                        value={formData.fullName}
-                        onChange={handleChange}
+                        {...register("fullName")}
                         className="pl-11 h-12"
-                        required
                       />
                     </div>
+                    {errors.fullName && (
+                      <p className="text-sm text-destructive">{errors.fullName.message}</p>
+                    )}
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="email">Email *</Label>
+                    <Label htmlFor="departmentOrClass">Department / Class *</Label>
                     <div className="relative">
-                      <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
+                      <Building2 className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
                       <Input
-                        id="email"
-                        name="email"
-                        type="email"
-                        placeholder="you@example.com"
-                        value={formData.email}
-                        onChange={handleChange}
+                        id="departmentOrClass"
+                        placeholder="e.g., Computer Science"
+                        {...register("departmentOrClass")}
                         className="pl-11 h-12"
-                        required
                       />
                     </div>
+                    {errors.departmentOrClass && (
+                      <p className="text-sm text-destructive">{errors.departmentOrClass.message}</p>
+                    )}
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="studentId">Student/Employee ID</Label>
-                    <Input
-                      id="studentId"
-                      name="studentId"
-                      placeholder="Optional"
-                      value={formData.studentId}
-                      onChange={handleChange}
-                      className="h-12"
-                    />
+                    <Label htmlFor="identifier">Student/Employee ID (optional)</Label>
+                    <div className="relative">
+                      <Hash className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
+                      <Input
+                        id="identifier"
+                        placeholder="e.g., 2025/CS/001"
+                        {...register("identifier")}
+                        className="pl-11 h-12"
+                      />
+                    </div>
+                    {errors.identifier && (
+                      <p className="text-sm text-destructive">{errors.identifier.message}</p>
+                    )}
                   </div>
                 </div>
+
+                {/* Upload Progress */}
+                {submitMutation.isPending && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="space-y-2"
+                  >
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground">Uploading...</span>
+                      <span className="font-medium text-foreground">{submitMutation.uploadProgress}%</span>
+                    </div>
+                    <Progress value={submitMutation.uploadProgress} className="h-2" />
+                  </motion.div>
+                )}
+
+                {/* Error */}
+                {submitMutation.error && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="p-4 rounded-lg bg-destructive/10 border border-destructive/20"
+                  >
+                    <div className="flex gap-3">
+                      <AlertCircle className="w-5 h-5 text-destructive shrink-0" />
+                      <div>
+                        <p className="font-medium text-destructive">Submission Failed</p>
+                        <p className="text-sm text-destructive/80 mt-1">
+                          {submitMutation.error.message}
+                        </p>
+                      </div>
+                    </div>
+                  </motion.div>
+                )}
 
                 <Button 
                   type="submit" 
                   variant="accent" 
                   size="lg" 
                   className="w-full"
-                  disabled={!canSubmit || isSubmitting}
+                  disabled={!canSubmit || submitMutation.isPending}
                 >
-                  {isSubmitting ? (
+                  {submitMutation.isPending ? (
                     <>
                       <Loader2 className="w-5 h-5 mr-2 animate-spin" />
                       Submitting...
@@ -259,10 +443,12 @@ const ParticipantSubmitPage = () => {
                 Photo Submitted!
               </h2>
               <p className="text-muted-foreground max-w-xs mx-auto">
-                Thank you for your submission. You'll receive a confirmation email shortly.
+                {album.payment_mode === "participant_pays" 
+                  ? "Your photo has been submitted. You'll receive payment instructions soon."
+                  : "Thank you! Your photo will appear in the album after review."}
               </p>
 
-              {selectedImage && (
+              {previewUrl && (
                 <motion.div
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
@@ -271,13 +457,32 @@ const ParticipantSubmitPage = () => {
                 >
                   <div className="aspect-[3/4] max-w-[150px] mx-auto rounded-xl overflow-hidden shadow-card">
                     <img 
-                      src={selectedImage} 
+                      src={previewUrl} 
                       alt="Submitted photo" 
                       className="w-full h-full object-cover"
                     />
                   </div>
                   <p className="text-sm text-muted-foreground mt-3">
-                    {formData.fullName}
+                    {formValues.fullName}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {formValues.departmentOrClass}
+                  </p>
+                </motion.div>
+              )}
+
+              {album.payment_mode === "participant_pays" && (
+                <motion.div
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.5 }}
+                  className="mt-8 p-4 rounded-xl bg-accent/10 border border-accent/20 max-w-xs mx-auto"
+                >
+                  <p className="text-sm font-medium text-foreground">
+                    Payment Required
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    ${album.price_per_participant} per person
                   </p>
                 </motion.div>
               )}

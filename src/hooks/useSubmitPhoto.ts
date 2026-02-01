@@ -1,0 +1,134 @@
+import { useState } from "react";
+import { useMutation } from "@tanstack/react-query";
+import { supabase } from "@/integrations/supabase/client";
+import type { PublicAlbum } from "@/hooks/usePublicAlbum";
+
+interface SubmissionData {
+  fullName: string;
+  departmentOrClass: string;
+  identifier?: string;
+  photoFile: File;
+}
+
+interface SubmissionResult {
+  participantId: string;
+  submissionId: string;
+  photoUrl: string;
+}
+
+export function useSubmitPhoto(album: PublicAlbum | null) {
+  const [uploadProgress, setUploadProgress] = useState(0);
+
+  const mutation = useMutation({
+    mutationFn: async (data: SubmissionData): Promise<SubmissionResult> => {
+      if (!album) throw new Error("Album not found");
+
+      setUploadProgress(10);
+
+      // Step 1: Check if participant already submitted (by name + album)
+      // We check for existing submission to prevent duplicates
+      const { data: existingSubmissions, error: checkError } = await supabase
+        .from("submissions")
+        .select(`
+          id,
+          participant:participants!inner(full_name)
+        `)
+        .eq("album_id", album.id);
+
+      if (checkError) throw checkError;
+
+      // Check for duplicate by name (case-insensitive)
+      const duplicate = existingSubmissions?.find(
+        (sub: any) => sub.participant?.full_name?.toLowerCase() === data.fullName.toLowerCase()
+      );
+
+      if (duplicate) {
+        throw new Error("You have already submitted a photo for this album.");
+      }
+
+      setUploadProgress(20);
+
+      // Step 2: Create participant record
+      const { data: participant, error: participantError } = await supabase
+        .from("participants")
+        .insert({
+          full_name: data.fullName.trim(),
+          department_or_class: data.departmentOrClass.trim(),
+          identifier: data.identifier?.trim() || null,
+        })
+        .select()
+        .single();
+
+      if (participantError) throw participantError;
+
+      setUploadProgress(40);
+
+      // Step 3: Upload photo to storage
+      const fileExt = data.photoFile.name.split(".").pop()?.toLowerCase() || "jpg";
+      const fileName = `${album.id}/${participant.id}.${fileExt}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from("photos")
+        .upload(fileName, data.photoFile, {
+          cacheControl: "3600",
+          upsert: false,
+        });
+
+      if (uploadError) {
+        // Clean up participant if upload fails
+        await supabase.from("participants").delete().eq("id", participant.id);
+        throw new Error("Failed to upload photo. Please try again.");
+      }
+
+      setUploadProgress(70);
+
+      // Step 4: Get public URL
+      const { data: urlData } = supabase.storage
+        .from("photos")
+        .getPublicUrl(fileName);
+
+      const photoUrl = urlData.publicUrl;
+
+      setUploadProgress(85);
+
+      // Step 5: Create submission record
+      const paymentStatus = album.payment_mode === "organizer_pays" ? "successful" : "pending";
+
+      const { data: submission, error: submissionError } = await supabase
+        .from("submissions")
+        .insert({
+          album_id: album.id,
+          participant_id: participant.id,
+          photo_url: photoUrl,
+          payment_status: paymentStatus,
+          approval_status: "pending",
+        })
+        .select()
+        .single();
+
+      if (submissionError) {
+        // Clean up photo and participant if submission fails
+        await supabase.storage.from("photos").remove([fileName]);
+        await supabase.from("participants").delete().eq("id", participant.id);
+        throw submissionError;
+      }
+
+      setUploadProgress(100);
+
+      return {
+        participantId: participant.id,
+        submissionId: submission.id,
+        photoUrl,
+      };
+    },
+    onSettled: () => {
+      // Reset progress after a delay
+      setTimeout(() => setUploadProgress(0), 500);
+    },
+  });
+
+  return {
+    ...mutation,
+    uploadProgress,
+  };
+}
