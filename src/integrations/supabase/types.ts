@@ -214,12 +214,17 @@ export type Database = {
         Args: { _submission_id: string }
         Returns: string
       }
+      is_album_open_for_submission: {
+        Args: { _album_id: string }
+        Returns: boolean
+      }
       is_album_owner: { Args: { _album_id: string }; Returns: boolean }
       is_payment_owner: { Args: { _payment_id: string }; Returns: boolean }
       is_submission_owner: {
         Args: { _submission_id: string }
         Returns: boolean
       }
+      is_valid_album: { Args: { _album_id: string }; Returns: boolean }
     }
     Enums: {
       album_type:
