@@ -1,198 +1,18 @@
-import { useState } from "react";
-import { motion, AnimatePresence } from "framer-motion";
-import { Link, useNavigate } from "react-router-dom";
+import { motion } from "framer-motion";
+import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { 
-  Plus, 
-  Image, 
-  Users, 
-  MoreVertical, 
-  Calendar,
-  Eye,
-  Copy,
-  LogOut,
-  Menu,
-  X,
-  Loader2
-} from "lucide-react";
-import { useAuth } from "@/contexts/AuthContext";
-import { useToast } from "@/hooks/use-toast";
-
-// Mock data for albums (will be replaced with real data later)
-const mockAlbums = [
-  {
-    id: "1",
-    title: "Class of 2025 - Computer Science",
-    participantCount: 45,
-    submissionCount: 38,
-    createdAt: "2025-01-15",
-    status: "active" as const,
-  },
-  {
-    id: "2",
-    title: "Bootcamp Cohort #12",
-    participantCount: 24,
-    submissionCount: 24,
-    createdAt: "2025-01-10",
-    status: "complete" as const,
-  },
-];
-
-type AlbumStatus = "active" | "complete" | "draft";
-
-interface Album {
-  id: string;
-  title: string;
-  participantCount: number;
-  submissionCount: number;
-  createdAt: string;
-  status: AlbumStatus;
-}
-
-const AlbumCard = ({ album }: { album: Album }) => {
-  const statusColors = {
-    active: "bg-success/10 text-success",
-    complete: "bg-accent/10 text-accent",
-    draft: "bg-muted text-muted-foreground",
-  };
-
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: 10 }}
-      animate={{ opacity: 1, y: 0 }}
-      className="card-gradient rounded-xl p-5 shadow-card border border-border/50"
-    >
-      <div className="flex items-start justify-between mb-3">
-        <div className="flex-1 min-w-0">
-          <h3 className="font-semibold text-foreground truncate pr-2">
-            {album.title}
-          </h3>
-          <div className="flex items-center gap-2 mt-1 text-sm text-muted-foreground">
-            <Calendar className="w-3.5 h-3.5" />
-            <span>{new Date(album.createdAt).toLocaleDateString()}</span>
-          </div>
-        </div>
-        <span className={`text-xs font-medium px-2.5 py-1 rounded-full capitalize ${statusColors[album.status]}`}>
-          {album.status}
-        </span>
-      </div>
-
-      <div className="flex items-center gap-4 mb-4 text-sm">
-        <div className="flex items-center gap-1.5 text-muted-foreground">
-          <Users className="w-4 h-4" />
-          <span>{album.participantCount} expected</span>
-        </div>
-        <div className="flex items-center gap-1.5 text-muted-foreground">
-          <Image className="w-4 h-4" />
-          <span>{album.submissionCount} submitted</span>
-        </div>
-      </div>
-
-      <div className="flex gap-2">
-        <Button asChild variant="outline" size="sm" className="flex-1">
-          <Link to={`/album/${album.id}`}>
-            <Eye className="w-4 h-4 mr-1.5" />
-            View
-          </Link>
-        </Button>
-        <Button variant="ghost" size="sm" className="px-2.5">
-          <Copy className="w-4 h-4" />
-        </Button>
-        <Button variant="ghost" size="sm" className="px-2.5">
-          <MoreVertical className="w-4 h-4" />
-        </Button>
-      </div>
-    </motion.div>
-  );
-};
-
-const EmptyState = () => (
-  <motion.div
-    initial={{ opacity: 0, scale: 0.95 }}
-    animate={{ opacity: 1, scale: 1 }}
-    className="text-center py-12"
-  >
-    <div className="w-16 h-16 rounded-2xl bg-muted flex items-center justify-center mx-auto mb-4">
-      <Image className="w-8 h-8 text-muted-foreground" />
-    </div>
-    <h3 className="text-lg font-semibold text-foreground mb-2">
-      No albums yet
-    </h3>
-    <p className="text-sm text-muted-foreground mb-6 max-w-xs mx-auto">
-      Create your first album and start collecting photos from your group.
-    </p>
-    <Button asChild variant="accent">
-      <Link to="/album/new">
-        <Plus className="w-4 h-4 mr-2" />
-        Create Album
-      </Link>
-    </Button>
-  </motion.div>
-);
+import { Plus, Loader2 } from "lucide-react";
+import { DashboardHeader } from "@/components/dashboard/DashboardHeader";
+import { AlbumCard } from "@/components/dashboard/AlbumCard";
+import { EmptyAlbumsState } from "@/components/dashboard/EmptyAlbumsState";
+import { useAlbums } from "@/hooks/useAlbums";
 
 const DashboardPage = () => {
-  const [menuOpen, setMenuOpen] = useState(false);
-  const { user, signOut } = useAuth();
-  const { toast } = useToast();
-  const navigate = useNavigate();
-  const albums = mockAlbums;
-
-  const handleSignOut = async () => {
-    await signOut();
-    toast({
-      title: "Signed out",
-      description: "You've been signed out successfully.",
-    });
-    navigate("/");
-  };
+  const { data: albums = [], isLoading, error } = useAlbums();
 
   return (
     <main className="min-h-[100dvh] bg-background safe-top safe-bottom">
-      {/* Header */}
-      <header className="sticky top-0 z-40 bg-background/80 backdrop-blur-lg border-b border-border">
-        <div className="mobile-container flex items-center justify-between h-16">
-          <span className="text-accent font-bold text-xl">OLEX</span>
-          
-          <button
-            onClick={() => setMenuOpen(!menuOpen)}
-            className="p-2 -mr-2 text-muted-foreground hover:text-foreground transition-colors"
-          >
-            {menuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
-          </button>
-        </div>
-
-        {/* Mobile menu */}
-        <AnimatePresence>
-          {menuOpen && (
-            <motion.div
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: "auto" }}
-              exit={{ opacity: 0, height: 0 }}
-              className="border-t border-border bg-background"
-            >
-              <div className="mobile-container py-4 space-y-3">
-                {/* User info */}
-                <div className="px-3 py-2 rounded-lg bg-muted/50">
-                  <p className="text-sm font-medium text-foreground truncate">
-                    {user?.user_metadata?.full_name || user?.email?.split('@')[0]}
-                  </p>
-                  <p className="text-xs text-muted-foreground truncate">
-                    {user?.email}
-                  </p>
-                </div>
-
-                <button
-                  onClick={handleSignOut}
-                  className="flex items-center gap-3 w-full px-3 py-2.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
-                >
-                  <LogOut className="w-5 h-5" />
-                  <span>Sign Out</span>
-                </button>
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </header>
+      <DashboardHeader />
 
       {/* Content */}
       <div className="mobile-container py-6">
@@ -210,39 +30,59 @@ const DashboardPage = () => {
           </p>
         </motion.div>
 
-        {/* Create button */}
-        {albums.length > 0 && (
-          <motion.div
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.1 }}
-            className="mb-6"
-          >
-            <Button asChild variant="accent" size="lg" className="w-full">
-              <Link to="/album/new">
-                <Plus className="w-5 h-5 mr-2" />
-                Create New Album
-              </Link>
-            </Button>
-          </motion.div>
+        {/* Loading state */}
+        {isLoading && (
+          <div className="flex justify-center py-12">
+            <Loader2 className="w-8 h-8 animate-spin text-accent" />
+          </div>
         )}
 
-        {/* Albums list */}
-        {albums.length > 0 ? (
-          <div className="space-y-4">
-            {albums.map((album, index) => (
+        {/* Error state */}
+        {error && (
+          <div className="text-center py-12">
+            <p className="text-destructive mb-2">Failed to load albums</p>
+            <p className="text-sm text-muted-foreground">Please try again later</p>
+          </div>
+        )}
+
+        {/* Content when loaded */}
+        {!isLoading && !error && (
+          <>
+            {/* Create button */}
+            {albums.length > 0 && (
               <motion.div
-                key={album.id}
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.1 + index * 0.05 }}
+                transition={{ delay: 0.1 }}
+                className="mb-6"
               >
-                <AlbumCard album={album} />
+                <Button asChild variant="accent" size="lg" className="w-full">
+                  <Link to="/album/new">
+                    <Plus className="w-5 h-5 mr-2" />
+                    Create New Album
+                  </Link>
+                </Button>
               </motion.div>
-            ))}
-          </div>
-        ) : (
-          <EmptyState />
+            )}
+
+            {/* Albums list */}
+            {albums.length > 0 ? (
+              <div className="space-y-4">
+                {albums.map((album, index) => (
+                  <motion.div
+                    key={album.id}
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 0.1 + index * 0.05 }}
+                  >
+                    <AlbumCard album={album} />
+                  </motion.div>
+                ))}
+              </div>
+            ) : (
+              <EmptyAlbumsState />
+            )}
+          </>
         )}
       </div>
     </main>

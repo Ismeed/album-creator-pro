@@ -9,6 +9,7 @@ import LandingPage from "./pages/LandingPage";
 import LoginPage from "./pages/LoginPage";
 import DashboardPage from "./pages/DashboardPage";
 import CreateAlbumPage from "./pages/CreateAlbumPage";
+import AlbumDetailPage from "./pages/AlbumDetailPage";
 import ParticipantSubmitPage from "./pages/ParticipantSubmitPage";
 import NotFound from "./pages/NotFound";
 
@@ -58,7 +59,15 @@ const App = () => (
               path="/album/:albumId"
               element={
                 <ProtectedRoute>
-                  <DashboardPage />
+                  <AlbumDetailPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/album/:albumId/edit"
+              element={
+                <ProtectedRoute>
+                  <CreateAlbumPage />
                 </ProtectedRoute>
               }
             />
