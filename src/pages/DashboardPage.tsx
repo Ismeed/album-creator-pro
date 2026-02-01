@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { 
   Plus, 
@@ -12,10 +12,13 @@ import {
   Copy,
   LogOut,
   Menu,
-  X
+  X,
+  Loader2
 } from "lucide-react";
+import { useAuth } from "@/contexts/AuthContext";
+import { useToast } from "@/hooks/use-toast";
 
-// Mock data for albums
+// Mock data for albums (will be replaced with real data later)
 const mockAlbums = [
   {
     id: "1",
@@ -129,7 +132,19 @@ const EmptyState = () => (
 
 const DashboardPage = () => {
   const [menuOpen, setMenuOpen] = useState(false);
+  const { user, signOut } = useAuth();
+  const { toast } = useToast();
+  const navigate = useNavigate();
   const albums = mockAlbums;
+
+  const handleSignOut = async () => {
+    await signOut();
+    toast({
+      title: "Signed out",
+      description: "You've been signed out successfully.",
+    });
+    navigate("/");
+  };
 
   return (
     <main className="min-h-[100dvh] bg-background safe-top safe-bottom">
@@ -155,14 +170,24 @@ const DashboardPage = () => {
               exit={{ opacity: 0, height: 0 }}
               className="border-t border-border bg-background"
             >
-              <div className="mobile-container py-4 space-y-2">
-                <Link
-                  to="/"
-                  className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+              <div className="mobile-container py-4 space-y-3">
+                {/* User info */}
+                <div className="px-3 py-2 rounded-lg bg-muted/50">
+                  <p className="text-sm font-medium text-foreground truncate">
+                    {user?.user_metadata?.full_name || user?.email?.split('@')[0]}
+                  </p>
+                  <p className="text-xs text-muted-foreground truncate">
+                    {user?.email}
+                  </p>
+                </div>
+
+                <button
+                  onClick={handleSignOut}
+                  className="flex items-center gap-3 w-full px-3 py-2.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
                 >
                   <LogOut className="w-5 h-5" />
                   <span>Sign Out</span>
-                </Link>
+                </button>
               </div>
             </motion.div>
           )}
