@@ -15,9 +15,6 @@ interface SubmissionResult {
   photoUrl: string;
 }
 
-// Edge function URL for participant submission
-const SUBMIT_PARTICIPANT_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/submit-participant`;
-
 export function useSubmitPhoto(album: PublicAlbum | null) {
   const [uploadProgress, setUploadProgress] = useState(0);
 
@@ -57,20 +54,43 @@ export function useSubmitPhoto(album: PublicAlbum | null) {
 
       setUploadProgress(30);
 
+      // Build the edge function URL
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+      const apiKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+      
+      if (!supabaseUrl || !apiKey) {
+        throw new Error("Missing Supabase configuration");
+      }
+
+      const submitUrl = `${supabaseUrl}/functions/v1/submit-participant`;
+      console.log("Submitting to:", submitUrl);
+
       // Send to edge function (handles participant, photo upload, and submission atomically)
-      const response = await fetch(SUBMIT_PARTICIPANT_URL, {
-        method: "POST",
-        headers: {
-          "apikey": import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
-        },
-        body: formData,
-      });
+      let response: Response;
+      try {
+        response = await fetch(submitUrl, {
+          method: "POST",
+          headers: {
+            "apikey": apiKey,
+          },
+          body: formData,
+        });
+      } catch (fetchError) {
+        console.error("Network error during fetch:", fetchError);
+        throw new Error("Network error. Please check your internet connection and try again.");
+      }
 
       setUploadProgress(80);
 
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || "Submission failed");
+        let errorMessage = "Submission failed";
+        try {
+          const errorData = await response.json();
+          errorMessage = errorData.error || errorMessage;
+        } catch {
+          errorMessage = `Server error: ${response.status}`;
+        }
+        throw new Error(errorMessage);
       }
 
       const result = await response.json();
