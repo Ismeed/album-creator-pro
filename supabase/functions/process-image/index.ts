@@ -19,6 +19,46 @@ interface ProcessRequest {
   backgroundColor?: string; // Key from BACKGROUND_COLORS or hex value
 }
 
+// Simple in-memory rate limiting (resets on function cold start)
+// For production, consider using Deno KV for persistence
+const processingAttempts = new Map<string, { count: number; firstAttempt: number }>();
+const MAX_ATTEMPTS_PER_SUBMISSION = 3;
+const RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000; // 1 hour
+
+function checkRateLimit(submissionId: string): { allowed: boolean; message?: string } {
+  const now = Date.now();
+  const record = processingAttempts.get(submissionId);
+  
+  if (!record) {
+    processingAttempts.set(submissionId, { count: 1, firstAttempt: now });
+    return { allowed: true };
+  }
+  
+  // Reset if window expired
+  if (now - record.firstAttempt > RATE_LIMIT_WINDOW_MS) {
+    processingAttempts.set(submissionId, { count: 1, firstAttempt: now });
+    return { allowed: true };
+  }
+  
+  // Check if exceeded
+  if (record.count >= MAX_ATTEMPTS_PER_SUBMISSION) {
+    return { 
+      allowed: false, 
+      message: "Processing limit reached for this submission. Please try again later." 
+    };
+  }
+  
+  // Increment and allow
+  record.count++;
+  return { allowed: true };
+}
+
+// Validate UUID format
+function isValidUUID(str: string): boolean {
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+  return uuidRegex.test(str);
+}
+
 Deno.serve(async (req) => {
   // Handle CORS preflight
   if (req.method === "OPTIONS") {
@@ -37,25 +77,64 @@ Deno.serve(async (req) => {
 
     const { submissionId, backgroundColor = "white" }: ProcessRequest = await req.json();
 
-    if (!submissionId) {
+    // Validate submissionId format
+    if (!submissionId || !isValidUUID(submissionId)) {
       return new Response(
-        JSON.stringify({ error: "Submission ID is required" }),
+        JSON.stringify({ error: "Invalid submission ID format" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Check rate limit before any expensive operations
+    const rateLimitCheck = checkRateLimit(submissionId);
+    if (!rateLimitCheck.allowed) {
+      return new Response(
+        JSON.stringify({ error: rateLimitCheck.message }),
+        { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
     console.log(`Processing submission: ${submissionId}`);
 
-    // Get submission with photo path
+    // Get submission with photo path and check if already processed
     const { data: submission, error: subError } = await supabase
       .from("submissions")
-      .select("id, photo_url, album_id, participant_id")
+      .select("id, photo_url, album_id, participant_id, processed_photo_url")
       .eq("id", submissionId)
       .single();
 
     if (subError || !submission) {
       return new Response(
         JSON.stringify({ error: "Submission not found" }),
+        { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Idempotency check: Skip processing if already processed with same background color
+    // Only re-process if explicitly changing background color
+    if (submission.processed_photo_url) {
+      console.log(`Submission ${submissionId} already has processed image, skipping`);
+      return new Response(
+        JSON.stringify({
+          success: true,
+          processedPhotoUrl: submission.processed_photo_url,
+          backgroundColor,
+          message: "Already processed"
+        }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Verify submission belongs to a valid, open album (defense in depth)
+    const { data: album, error: albumError } = await supabase
+      .from("albums")
+      .select("id, is_locked")
+      .eq("id", submission.album_id)
+      .single();
+
+    if (albumError || !album) {
+      return new Response(
+        JSON.stringify({ error: "Album not found" }),
         { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
@@ -148,18 +227,14 @@ Deno.serve(async (req) => {
       throw new Error("Failed to upload processed image");
     }
 
-    // Get public URL for processed image
-    const { data: urlData } = supabase.storage
-      .from("photos")
-      .getPublicUrl(processedFileName);
+    // Store the path (not public URL) since bucket is private
+    const processedPhotoPath = processedFileName;
 
-    const processedPhotoUrl = urlData.publicUrl;
-
-    // Update submission with processed image URL and background color
+    // Update submission with processed image path and background color
     const { error: updateError } = await supabase
       .from("submissions")
       .update({
-        processed_photo_url: processedPhotoUrl,
+        processed_photo_url: processedPhotoPath,
         background_color: backgroundColor,
       })
       .eq("id", submissionId);
@@ -174,16 +249,16 @@ Deno.serve(async (req) => {
     return new Response(
       JSON.stringify({
         success: true,
-        processedPhotoUrl,
+        processedPhotoUrl: processedPhotoPath,
         backgroundColor,
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (error: unknown) {
     console.error("Process image error:", error);
-    const message = error instanceof Error ? error.message : "Internal server error";
+    // Return generic error message to prevent information leakage
     return new Response(
-      JSON.stringify({ error: message }),
+      JSON.stringify({ error: "Image processing failed" }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
