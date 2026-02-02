@@ -2,12 +2,14 @@ import { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import type { PublicAlbum } from "@/hooks/usePublicAlbum";
+import { triggerImageProcessing, type BackgroundColor } from "@/hooks/useImageProcessing";
 
 interface SubmissionData {
   fullName: string;
   departmentOrClass: string;
   identifier?: string;
   photoFile: File;
+  backgroundColor?: BackgroundColor;
 }
 
 interface SubmissionResult {
@@ -102,6 +104,7 @@ export function useSubmitPhoto(album: PublicAlbum | null) {
           photo_url: photoUrl,
           payment_status: paymentStatus,
           approval_status: "pending",
+          background_color: data.backgroundColor || "white",
         })
         .select()
         .single();
@@ -114,6 +117,9 @@ export function useSubmitPhoto(album: PublicAlbum | null) {
       }
 
       setUploadProgress(100);
+
+      // Step 6: Trigger async image processing (fire and forget)
+      triggerImageProcessing(submission.id, data.backgroundColor || "white");
 
       return {
         participantId: participant.id,
