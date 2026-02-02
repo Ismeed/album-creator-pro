@@ -25,6 +25,8 @@ import {
 import { usePublicAlbum, useAlbumStatus } from "@/hooks/usePublicAlbum";
 import { useSubmitPhoto } from "@/hooks/useSubmitPhoto";
 import { useInitializePayment } from "@/hooks/usePayment";
+import { BackgroundColorPicker } from "@/components/submission/BackgroundColorPicker";
+import type { BackgroundColor } from "@/hooks/useImageProcessing";
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
 const ACCEPTED_TYPES = ["image/jpeg", "image/jpg", "image/png", "image/webp"];
@@ -46,6 +48,7 @@ const ParticipantSubmitPage = () => {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [fileError, setFileError] = useState<string | null>(null);
+  const [backgroundColor, setBackgroundColor] = useState<BackgroundColor>("white");
 
   const { data: album, isLoading: albumLoading, error: albumError } = usePublicAlbum(albumId);
   const albumStatus = useAlbumStatus(album);
@@ -119,6 +122,7 @@ const ParticipantSubmitPage = () => {
         departmentOrClass: data.departmentOrClass,
         identifier: data.identifier,
         photoFile: selectedFile,
+        backgroundColor,
       });
 
       // Check if payment is required (participant_pays mode)
@@ -423,7 +427,12 @@ const ParticipantSubmitPage = () => {
                   </div>
                 </div>
 
-                {/* Upload Progress */}
+                {/* Background Color Selection */}
+                <BackgroundColorPicker
+                  value={backgroundColor}
+                  onChange={setBackgroundColor}
+                />
+
                 {submitMutation.isPending && (
                   <motion.div
                     initial={{ opacity: 0, y: 10 }}

@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { motion } from "framer-motion";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -28,9 +29,23 @@ import {
   Building2,
   CreditCard,
   Loader2,
-  Eye
+  Eye,
+  RefreshCw
 } from "lucide-react";
 import type { SubmissionWithParticipant } from "@/hooks/useSubmissions";
+import { useProcessImage, BACKGROUND_COLOR_OPTIONS, type BackgroundColor } from "@/hooks/useImageProcessing";
+
+const getColorLabel = (color: string | null): string => {
+  if (!color) return "Not set";
+  const option = BACKGROUND_COLOR_OPTIONS.find(opt => opt.value === color);
+  return option?.label || color;
+};
+
+const getColorHex = (color: string | null): string => {
+  if (!color) return "#FFFFFF";
+  const option = BACKGROUND_COLOR_OPTIONS.find(opt => opt.value === color);
+  return option?.hex || color;
+};
 
 interface SubmissionCardProps {
   submission: SubmissionWithParticipant;
@@ -117,19 +132,25 @@ export function SubmissionCard({
       }`}
     >
       <div className="flex gap-3">
-        {/* Thumbnail */}
+        {/* Thumbnail - prefer processed photo if available */}
         <button 
           onClick={() => onViewDetails(submission)}
           className="w-20 h-20 rounded-lg bg-muted overflow-hidden shrink-0 relative group"
         >
           <img
-            src={submission.photo_url}
+            src={submission.processed_photo_url || submission.photo_url}
             alt="Submission"
             className="w-full h-full object-cover transition-transform group-hover:scale-105"
           />
           <div className="absolute inset-0 bg-foreground/0 group-hover:bg-foreground/20 transition-colors flex items-center justify-center">
             <Eye className="w-5 h-5 text-background opacity-0 group-hover:opacity-100 transition-opacity" />
           </div>
+          {/* Processing indicator */}
+          {!submission.processed_photo_url && (
+            <div className="absolute bottom-0.5 right-0.5 bg-accent/80 rounded px-1 py-0.5">
+              <Loader2 className="w-2.5 h-2.5 text-accent-foreground animate-spin" />
+            </div>
+          )}
         </button>
 
         {/* Info */}
@@ -269,7 +290,19 @@ export function SubmissionDetailSheet({
   isUpdating,
   isDeleting,
 }: SubmissionDetailSheetProps) {
+  const processImage = useProcessImage();
+  const [selectedBgColor, setSelectedBgColor] = useState<BackgroundColor>(
+    (submission?.background_color as BackgroundColor) || "white"
+  );
+
   if (!submission) return null;
+
+  const handleReprocess = () => {
+    processImage.mutate({
+      submissionId: submission.id,
+      backgroundColor: selectedBgColor,
+    });
+  };
 
   const getApprovalBadge = () => {
     switch (submission.approval_status) {
@@ -333,13 +366,37 @@ export function SubmissionDetailSheet({
         </SheetHeader>
 
         <div className="mt-6 space-y-6 overflow-y-auto pb-6">
-          {/* Full Photo */}
-          <div className="rounded-xl overflow-hidden bg-muted aspect-square max-h-[40vh] mx-auto">
-            <img
-              src={submission.photo_url}
-              alt="Submission"
-              className="w-full h-full object-contain"
-            />
+          {/* Full Photo - Show processed if available, with option to view original */}
+          <div className="space-y-2">
+            <div className="rounded-xl overflow-hidden bg-muted aspect-square max-h-[40vh] mx-auto">
+              <img
+                src={submission.processed_photo_url || submission.photo_url}
+                alt="Submission"
+                className="w-full h-full object-contain"
+              />
+            </div>
+            {submission.processed_photo_url && (
+              <div className="flex justify-center gap-2 text-xs">
+                <span className="text-success flex items-center gap-1">
+                  <Check className="w-3 h-3" />
+                  Processed
+                </span>
+                <a 
+                  href={submission.photo_url} 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="text-muted-foreground hover:text-foreground underline"
+                >
+                  View Original
+                </a>
+              </div>
+            )}
+            {!submission.processed_photo_url && (
+              <p className="text-xs text-center text-muted-foreground flex items-center justify-center gap-1">
+                <Loader2 className="w-3 h-3 animate-spin" />
+                Processing image...
+              </p>
+            )}
           </div>
 
           {/* Participant Info */}
@@ -385,21 +442,65 @@ export function SubmissionDetailSheet({
               </p>
             </div>
 
-            {/* Background Color */}
-            {submission.background_color && (
-              <div className="rounded-lg bg-muted/50 p-3">
-                <p className="text-xs text-muted-foreground mb-1">Background Color</p>
-                <div className="flex items-center gap-2">
-                  <div 
-                    className="w-6 h-6 rounded border border-border"
-                    style={{ backgroundColor: submission.background_color }}
-                  />
-                  <span className="text-sm font-mono text-foreground">
-                    {submission.background_color}
-                  </span>
+            {/* Background Color with Reprocess */}
+            <div className="rounded-lg bg-muted/50 p-3 space-y-3">
+              <div>
+                <p className="text-xs text-muted-foreground mb-2">Background Color</p>
+                <div className="flex gap-2">
+                  {BACKGROUND_COLOR_OPTIONS.map((option) => (
+                    <button
+                      key={option.value}
+                      type="button"
+                      onClick={() => setSelectedBgColor(option.value)}
+                      className={`w-8 h-8 rounded-full border-2 transition-all ${
+                        selectedBgColor === option.value
+                          ? "border-accent ring-2 ring-accent ring-offset-1 ring-offset-background"
+                          : "border-border hover:border-muted-foreground"
+                      }`}
+                      style={{ backgroundColor: option.hex }}
+                      aria-label={option.label}
+                      title={option.label}
+                    >
+                      {selectedBgColor === option.value && (
+                        <Check
+                          className={`w-4 h-4 mx-auto ${
+                            option.value === "white" || option.value === "gray"
+                              ? "text-foreground"
+                              : "text-white"
+                          }`}
+                        />
+                      )}
+                    </button>
+                  ))}
                 </div>
               </div>
-            )}
+              {selectedBgColor !== submission.background_color && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="w-full"
+                  onClick={handleReprocess}
+                  disabled={processImage.isPending}
+                >
+                  {processImage.isPending ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Processing...
+                    </>
+                  ) : (
+                    <>
+                      <RefreshCw className="w-4 h-4 mr-2" />
+                      Apply New Background
+                    </>
+                  )}
+                </Button>
+              )}
+              {processImage.isSuccess && (
+                <p className="text-xs text-success text-center">
+                  Background updated! Refreshing...
+                </p>
+              )}
+            </div>
           </div>
 
           {/* Actions */}
