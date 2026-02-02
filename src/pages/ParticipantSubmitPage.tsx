@@ -1,21 +1,8 @@
-import { useState, useRef, useCallback } from "react";
+import { useState, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { useParams, useNavigate } from "react-router-dom";
-import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { z } from "zod";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Progress } from "@/components/ui/progress";
+import { useParams } from "react-router-dom";
 import { 
-  Camera, 
-  Upload, 
-  User, 
-  Building2,
-  Hash,
   Check, 
-  X,
   Loader2,
   AlertCircle,
   Lock,
@@ -25,109 +12,74 @@ import {
 import { usePublicAlbum, useAlbumStatus } from "@/hooks/usePublicAlbum";
 import { useSubmitPhoto } from "@/hooks/useSubmitPhoto";
 import { useInitializePayment } from "@/hooks/usePayment";
-import { BackgroundColorPicker } from "@/components/submission/BackgroundColorPicker";
+import { PhotoUploader } from "@/components/submission/PhotoUploader";
+import { ParticipantDetailsForm, type ParticipantField, type ParticipantFormData } from "@/components/submission/ParticipantDetailsForm";
 import type { BackgroundColor } from "@/hooks/useImageProcessing";
 
-const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
-const ACCEPTED_TYPES = ["image/jpeg", "image/jpg", "image/png", "image/webp"];
-
-const formSchema = z.object({
-  fullName: z.string().trim().min(2, "Name must be at least 2 characters").max(100, "Name is too long"),
-  email: z.string().trim().email("Please enter a valid email").optional().or(z.literal("")),
-  departmentOrClass: z.string().trim().min(1, "Department/Class is required").max(100, "Too long"),
-  identifier: z.string().trim().max(50, "ID is too long").optional(),
-});
-
-type FormData = z.infer<typeof formSchema>;
+type SubmissionStep = "upload" | "preview" | "details" | "success";
 
 const ParticipantSubmitPage = () => {
   const { albumId } = useParams<{ albumId: string }>();
-  const navigate = useNavigate();
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const [step, setStep] = useState<"upload" | "details" | "success">("upload");
+  
+  // Step-based flow state
+  const [step, setStep] = useState<SubmissionStep>("upload");
+  
+  // Photo state - persisted across steps
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
-  const [fileError, setFileError] = useState<string | null>(null);
   const [backgroundColor, setBackgroundColor] = useState<BackgroundColor>("white");
+  
+  // Form data for success display
+  const [submittedData, setSubmittedData] = useState<ParticipantFormData | null>(null);
 
   const { data: album, isLoading: albumLoading, error: albumError } = usePublicAlbum(albumId);
   const albumStatus = useAlbumStatus(album);
   const submitMutation = useSubmitPhoto(album ?? null);
   const initPayment = useInitializePayment();
 
-  const {
-    register,
-    handleSubmit,
-    formState: { errors },
-    watch,
-  } = useForm<FormData>({
-    resolver: zodResolver(formSchema),
-    defaultValues: {
-      fullName: "",
-      email: "",
-      departmentOrClass: "",
-      identifier: "",
-    },
-  });
+  // Get required fields from album config (default to basic fields)
+  const requiredFields: ParticipantField[] = album?.required_fields 
+    ? (album.required_fields as ParticipantField[])
+    : ["full_name", "department_or_class"];
 
-  const formValues = watch();
+  const requiresPayment = album?.payment_mode === "participant_pays" && (album?.price_per_participant || 0) > 0;
 
-  const validateFile = useCallback((file: File): string | null => {
-    if (!ACCEPTED_TYPES.includes(file.type)) {
-      return "Please upload a JPG or PNG image.";
-    }
-    if (file.size > MAX_FILE_SIZE) {
-      return "Photo must be under 10MB.";
-    }
-    return null;
+  // Handle photo selection from uploader
+  const handlePhotoSelected = useCallback((file: File, preview: string) => {
+    setSelectedFile(file);
+    setPreviewUrl(preview);
+    // Go directly to details after photo is selected
+    setStep("details");
   }, []);
 
-  const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    setFileError(null);
-
-    if (file) {
-      const error = validateFile(file);
-      if (error) {
-        setFileError(error);
-        return;
-      }
-
-      setSelectedFile(file);
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setPreviewUrl(reader.result as string);
-        setStep("details");
-      };
-      reader.readAsDataURL(file);
-    }
-  }, [validateFile]);
-
+  // Handle clearing photo - go back to upload step
   const handleClearPhoto = useCallback(() => {
     setSelectedFile(null);
     setPreviewUrl(null);
-    setFileError(null);
     setStep("upload");
-    if (fileInputRef.current) {
-      fileInputRef.current.value = "";
-    }
   }, []);
 
-  const onSubmit = async (data: FormData) => {
+  // Handle going back from details to upload
+  const handleBackToUpload = useCallback(() => {
+    // Keep the photo but go back to upload step to allow changing it
+    setStep("upload");
+  }, []);
+
+  // Handle form submission
+  const handleSubmit = async (data: ParticipantFormData) => {
     if (!selectedFile || !album) return;
 
     try {
       const result = await submitMutation.mutateAsync({
-        fullName: data.fullName,
-        departmentOrClass: data.departmentOrClass,
-        identifier: data.identifier,
+        ...data,
         photoFile: selectedFile,
         backgroundColor,
       });
 
-      // Check if payment is required (participant_pays mode)
-      if (album.payment_mode === "participant_pays" && album.price_per_participant && album.price_per_participant > 0) {
-        // Redirect to payment page
+      setSubmittedData(data);
+
+      // Check if payment is required
+      if (requiresPayment && album.price_per_participant && album.price_per_participant > 0) {
         const email = data.email || `${data.fullName.toLowerCase().replace(/\s+/g, '')}@temp.olex.app`;
         const callbackUrl = `${window.location.origin}/album/${albumId}/payment?submission_id=${result.submissionId}&email=${encodeURIComponent(email)}`;
         
@@ -137,19 +89,12 @@ const ParticipantSubmitPage = () => {
           callbackUrl,
         });
       } else {
-        // No payment needed, show success
         setStep("success");
       }
     } catch (error) {
       // Error is handled by the mutation
     }
   };
-
-  // For participant_pays mode, email is required for payment
-  const requiresPayment = album?.payment_mode === "participant_pays" && (album?.price_per_participant || 0) > 0;
-  const canSubmit = formValues.fullName.length >= 2 && 
-    formValues.departmentOrClass.length >= 1 && 
-    (!requiresPayment || (formValues.email && formValues.email.includes("@")));
 
   // Loading state
   if (albumLoading) {
@@ -237,6 +182,23 @@ const ParticipantSubmitPage = () => {
         </div>
       </header>
 
+      {/* Step indicator (visible during upload and details) */}
+      {(step === "upload" || step === "details") && (
+        <div className="mobile-container pt-4">
+          <div className="flex gap-2">
+            <div className={`h-1 flex-1 rounded-full transition-colors ${
+              step === "upload" || step === "details" ? "bg-accent" : "bg-muted"
+            }`} />
+            <div className={`h-1 flex-1 rounded-full transition-colors ${
+              step === "details" ? "bg-accent" : "bg-muted"
+            }`} />
+          </div>
+          <p className="text-xs text-muted-foreground mt-2">
+            Step {step === "upload" ? 1 : 2} of 2: {step === "upload" ? "Upload Photo" : "Your Details"}
+          </p>
+        </div>
+      )}
+
       <div className="mobile-container py-6">
         <AnimatePresence mode="wait">
           {/* Step 1: Upload Photo */}
@@ -257,236 +219,30 @@ const ParticipantSubmitPage = () => {
                 </p>
               </div>
 
-              {/* Upload area */}
-              <div 
-                onClick={() => fileInputRef.current?.click()}
-                className={`aspect-[3/4] max-w-xs mx-auto rounded-2xl border-2 border-dashed transition-colors cursor-pointer flex flex-col items-center justify-center gap-4 p-6 ${
-                  fileError 
-                    ? "border-destructive bg-destructive/5" 
-                    : "border-border hover:border-accent hover:bg-accent/5"
-                }`}
-              >
-                <div className={`w-16 h-16 rounded-full flex items-center justify-center ${
-                  fileError ? "bg-destructive/10" : "bg-muted"
-                }`}>
-                  <Camera className={`w-8 h-8 ${fileError ? "text-destructive" : "text-muted-foreground"}`} />
-                </div>
-                <div className="text-center">
-                  <p className="font-medium text-foreground">
-                    Tap to upload photo
-                  </p>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    JPG or PNG, max 10MB
-                  </p>
-                </div>
-                <Button variant="accent" size="sm">
-                  <Upload className="w-4 h-4 mr-2" />
-                  Choose Photo
-                </Button>
-              </div>
-
-              {fileError && (
-                <motion.p
-                  initial={{ opacity: 0, y: -10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className="text-sm text-destructive text-center flex items-center justify-center gap-2"
-                >
-                  <AlertCircle className="w-4 h-4" />
-                  {fileError}
-                </motion.p>
-              )}
-
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/jpeg,image/jpg,image/png,image/webp"
-                capture="environment"
-                onChange={handleFileSelect}
-                className="hidden"
+              <PhotoUploader
+                onPhotoSelected={handlePhotoSelected}
+                previewUrl={previewUrl}
+                onClear={handleClearPhoto}
               />
             </motion.div>
           )}
 
           {/* Step 2: Enter Details */}
-          {step === "details" && (
-            <motion.div
+          {step === "details" && previewUrl && (
+            <ParticipantDetailsForm
               key="details"
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -20 }}
-            >
-              <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
-                {/* Photo preview */}
-                <div className="relative aspect-[3/4] max-w-[200px] mx-auto rounded-xl overflow-hidden shadow-card">
-                  {previewUrl && (
-                    <img 
-                      src={previewUrl} 
-                      alt="Preview" 
-                      className="w-full h-full object-cover"
-                    />
-                  )}
-                  <button
-                    type="button"
-                    onClick={handleClearPhoto}
-                    className="absolute top-2 right-2 w-8 h-8 rounded-full bg-background/80 backdrop-blur flex items-center justify-center text-foreground hover:bg-background transition-colors"
-                  >
-                    <X className="w-4 h-4" />
-                  </button>
-                </div>
-
-                <div className="text-center">
-                  <h2 className="text-xl font-bold text-foreground">
-                    Your Details
-                  </h2>
-                  <p className="text-sm text-muted-foreground mt-1">
-                    Add your information for the album
-                  </p>
-                </div>
-
-                <div className="space-y-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="fullName">Full Name *</Label>
-                    <div className="relative">
-                      <User className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
-                      <Input
-                        id="fullName"
-                        placeholder="Your full name"
-                        {...register("fullName")}
-                        className="pl-11 h-12"
-                      />
-                    </div>
-                    {errors.fullName && (
-                      <p className="text-sm text-destructive">{errors.fullName.message}</p>
-                    )}
-                  </div>
-
-                  {requiresPayment && (
-                    <div className="space-y-2">
-                      <Label htmlFor="email">Email Address *</Label>
-                      <div className="relative">
-                        <svg 
-                          className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground"
-                          fill="none" 
-                          stroke="currentColor" 
-                          viewBox="0 0 24 24"
-                        >
-                          <path 
-                            strokeLinecap="round" 
-                            strokeLinejoin="round" 
-                            strokeWidth={2} 
-                            d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" 
-                          />
-                        </svg>
-                        <Input
-                          id="email"
-                          type="email"
-                          placeholder="your.email@example.com"
-                          {...register("email")}
-                          className="pl-11 h-12"
-                        />
-                      </div>
-                      {errors.email && (
-                        <p className="text-sm text-destructive">{errors.email.message}</p>
-                      )}
-                      <p className="text-xs text-muted-foreground">
-                        Required for payment receipt
-                      </p>
-                    </div>
-                  )}
-
-                  <div className="space-y-2">
-                    <Label htmlFor="departmentOrClass">Department / Class *</Label>
-                    <div className="relative">
-                      <Building2 className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
-                      <Input
-                        id="departmentOrClass"
-                        placeholder="e.g., Computer Science"
-                        {...register("departmentOrClass")}
-                        className="pl-11 h-12"
-                      />
-                    </div>
-                    {errors.departmentOrClass && (
-                      <p className="text-sm text-destructive">{errors.departmentOrClass.message}</p>
-                    )}
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="identifier">Student/Employee ID (optional)</Label>
-                    <div className="relative">
-                      <Hash className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
-                      <Input
-                        id="identifier"
-                        placeholder="e.g., 2025/CS/001"
-                        {...register("identifier")}
-                        className="pl-11 h-12"
-                      />
-                    </div>
-                    {errors.identifier && (
-                      <p className="text-sm text-destructive">{errors.identifier.message}</p>
-                    )}
-                  </div>
-                </div>
-
-                {/* Background Color Selection */}
-                <BackgroundColorPicker
-                  value={backgroundColor}
-                  onChange={setBackgroundColor}
-                />
-
-                {submitMutation.isPending && (
-                  <motion.div
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className="space-y-2"
-                  >
-                    <div className="flex justify-between text-sm">
-                      <span className="text-muted-foreground">Uploading...</span>
-                      <span className="font-medium text-foreground">{submitMutation.uploadProgress}%</span>
-                    </div>
-                    <Progress value={submitMutation.uploadProgress} className="h-2" />
-                  </motion.div>
-                )}
-
-                {/* Error */}
-                {submitMutation.error && (
-                  <motion.div
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className="p-4 rounded-lg bg-destructive/10 border border-destructive/20"
-                  >
-                    <div className="flex gap-3">
-                      <AlertCircle className="w-5 h-5 text-destructive shrink-0" />
-                      <div>
-                        <p className="font-medium text-destructive">Submission Failed</p>
-                        <p className="text-sm text-destructive/80 mt-1">
-                          {submitMutation.error.message}
-                        </p>
-                      </div>
-                    </div>
-                  </motion.div>
-                )}
-
-                <Button 
-                  type="submit" 
-                  variant="accent" 
-                  size="lg" 
-                  className="w-full"
-                  disabled={!canSubmit || submitMutation.isPending}
-                >
-                  {submitMutation.isPending ? (
-                    <>
-                      <Loader2 className="w-5 h-5 mr-2 animate-spin" />
-                      Submitting...
-                    </>
-                  ) : (
-                    <>
-                      <Check className="w-5 h-5 mr-2" />
-                      Submit Photo
-                    </>
-                  )}
-                </Button>
-              </form>
-            </motion.div>
+              requiredFields={requiredFields}
+              requiresPayment={requiresPayment}
+              pricePerParticipant={album.price_per_participant}
+              previewUrl={previewUrl}
+              backgroundColor={backgroundColor}
+              onBackgroundColorChange={setBackgroundColor}
+              onSubmit={handleSubmit}
+              onBack={handleBackToUpload}
+              isSubmitting={submitMutation.isPending}
+              uploadProgress={submitMutation.uploadProgress}
+              error={submitMutation.error}
+            />
           )}
 
           {/* Step 3: Success */}
@@ -529,12 +285,16 @@ const ParticipantSubmitPage = () => {
                       className="w-full h-full object-cover"
                     />
                   </div>
-                  <p className="text-sm text-muted-foreground mt-3">
-                    {formValues.fullName}
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    {formValues.departmentOrClass}
-                  </p>
+                  {submittedData && (
+                    <>
+                      <p className="text-sm text-muted-foreground mt-3">
+                        {submittedData.fullName}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {submittedData.departmentOrClass}
+                      </p>
+                    </>
+                  )}
                 </motion.div>
               )}
 

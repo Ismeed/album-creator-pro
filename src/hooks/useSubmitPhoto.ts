@@ -3,11 +3,9 @@ import { useMutation } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import type { PublicAlbum } from "@/hooks/usePublicAlbum";
 import { triggerImageProcessing, type BackgroundColor } from "@/hooks/useImageProcessing";
+import type { ParticipantFormData, ParticipantRole } from "@/components/submission/ParticipantDetailsForm";
 
-interface SubmissionData {
-  fullName: string;
-  departmentOrClass: string;
-  identifier?: string;
+interface SubmissionData extends ParticipantFormData {
   photoFile: File;
   backgroundColor?: BackgroundColor;
 }
@@ -28,7 +26,6 @@ export function useSubmitPhoto(album: PublicAlbum | null) {
       setUploadProgress(10);
 
       // Step 1: Check if participant already submitted (by name + album)
-      // We check for existing submission to prevent duplicates
       const { data: existingSubmissions, error: checkError } = await supabase
         .from("submissions")
         .select(`
@@ -50,13 +47,17 @@ export function useSubmitPhoto(album: PublicAlbum | null) {
 
       setUploadProgress(20);
 
-      // Step 2: Create participant record
+      // Step 2: Create participant record with expanded fields
       const { data: participant, error: participantError } = await supabase
         .from("participants")
         .insert({
           full_name: data.fullName.trim(),
-          department_or_class: data.departmentOrClass.trim(),
+          department_or_class: data.departmentOrClass?.trim() || null,
           identifier: data.identifier?.trim() || null,
+          graduation_year: data.graduationYear?.trim() || null,
+          role: (data.role as ParticipantRole) || "participant",
+          quote: data.quote?.trim() || null,
+          cohort: data.cohort?.trim() || null,
         })
         .select()
         .single();
@@ -85,7 +86,6 @@ export function useSubmitPhoto(album: PublicAlbum | null) {
       setUploadProgress(70);
 
       // Step 4: Store the storage path (not public URL) since bucket is private
-      // The path format is: {albumId}/{participantId}.{ext}
       const photoPath = fileName;
 
       setUploadProgress(85);
@@ -98,7 +98,7 @@ export function useSubmitPhoto(album: PublicAlbum | null) {
         .insert({
           album_id: album.id,
           participant_id: participant.id,
-          photo_url: photoPath, // Store path, not URL (bucket is private)
+          photo_url: photoPath,
           payment_status: paymentStatus,
           approval_status: "pending",
           background_color: data.backgroundColor || "white",
@@ -121,7 +121,7 @@ export function useSubmitPhoto(album: PublicAlbum | null) {
       return {
         participantId: participant.id,
         submissionId: submission.id,
-        photoUrl: photoPath, // Return path for consistency
+        photoUrl: photoPath,
       };
     },
     onSettled: () => {
