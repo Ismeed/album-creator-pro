@@ -2,36 +2,50 @@ import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 
 /**
- * Extracts the storage path from a Supabase public URL.
- * Handles URLs like: https://xxx.supabase.co/storage/v1/object/public/photos/albumId/participantId.jpg
+ * Extracts the storage path from various input formats.
+ * Handles:
+ * - Direct storage paths: "albumId/participantId.jpg"
+ * - Public URLs: "https://xxx.supabase.co/storage/v1/object/public/photos/albumId/participantId.jpg"
+ * - Signed URLs: "https://xxx.supabase.co/storage/v1/object/sign/photos/albumId/participantId.jpg?token=..."
  */
-function extractStoragePath(publicUrl: string): string | null {
+function extractStoragePath(input: string): string {
+  if (!input) return input;
+  
   try {
-    // Check if it's a Supabase storage URL
-    const match = publicUrl.match(/\/storage\/v1\/object\/public\/photos\/(.+)$/);
-    if (match) {
-      return match[1];
+    // Check if it's already a storage path (no http/https prefix)
+    if (!input.startsWith("http://") && !input.startsWith("https://")) {
+      // It's already a storage path like "albumId/participantId.jpg"
+      return input;
     }
-    // Alternative format: /storage/v1/object/sign/photos/...
-    const signMatch = publicUrl.match(/\/storage\/v1\/object\/sign\/photos\/(.+)$/);
+    
+    // Check if it's a Supabase storage URL with public path
+    const publicMatch = input.match(/\/storage\/v1\/object\/public\/photos\/(.+)$/);
+    if (publicMatch) {
+      return publicMatch[1];
+    }
+    
+    // Check for signed URL format
+    const signMatch = input.match(/\/storage\/v1\/object\/sign\/photos\/(.+?)(?:\?|$)/);
     if (signMatch) {
-      return signMatch[1].split("?")[0]; // Remove query params
+      return signMatch[1];
     }
-    return null;
+    
+    // Not a recognized format, return as-is
+    return input;
   } catch {
-    return null;
+    return input;
   }
 }
 
 /**
  * Hook to generate a signed URL for a photo stored in private Supabase storage.
- * Falls back to the original URL if signed URL generation fails.
+ * Accepts either a storage path or a legacy public URL.
  * 
- * @param publicUrl - The original public URL or storage path
+ * @param photoPathOrUrl - Storage path (e.g., "albumId/file.jpg") or legacy URL
  * @param expiresIn - URL expiration time in seconds (default: 1 hour)
  */
 export function useSignedPhotoUrl(
-  publicUrl: string | null | undefined,
+  photoPathOrUrl: string | null | undefined,
   expiresIn: number = 3600
 ): { signedUrl: string | null; isLoading: boolean; error: Error | null } {
   const [signedUrl, setSignedUrl] = useState<string | null>(null);
@@ -39,7 +53,7 @@ export function useSignedPhotoUrl(
   const [error, setError] = useState<Error | null>(null);
 
   useEffect(() => {
-    if (!publicUrl) {
+    if (!photoPathOrUrl) {
       setSignedUrl(null);
       return;
     }
@@ -49,13 +63,8 @@ export function useSignedPhotoUrl(
       setError(null);
 
       try {
-        const storagePath = extractStoragePath(publicUrl);
-        
-        if (!storagePath) {
-          // Not a recognized storage URL, use original
-          setSignedUrl(publicUrl);
-          return;
-        }
+        // Extract storage path from input (handles both paths and legacy URLs)
+        const storagePath = extractStoragePath(photoPathOrUrl);
 
         const { data, error: signError } = await supabase.storage
           .from("photos")
@@ -63,8 +72,7 @@ export function useSignedPhotoUrl(
 
         if (signError) {
           console.error("Failed to generate signed URL:", signError);
-          // Fall back to original URL (may not work if bucket is private)
-          setSignedUrl(publicUrl);
+          setSignedUrl(null);
           setError(signError as Error);
           return;
         }
@@ -72,7 +80,7 @@ export function useSignedPhotoUrl(
         setSignedUrl(data.signedUrl);
       } catch (err) {
         console.error("Error generating signed URL:", err);
-        setSignedUrl(publicUrl);
+        setSignedUrl(null);
         setError(err as Error);
       } finally {
         setIsLoading(false);
@@ -80,7 +88,7 @@ export function useSignedPhotoUrl(
     };
 
     generateSignedUrl();
-  }, [publicUrl, expiresIn]);
+  }, [photoPathOrUrl, expiresIn]);
 
   return { signedUrl, isLoading, error };
 }
@@ -90,15 +98,14 @@ export function useSignedPhotoUrl(
  * Useful for batch processing in album views.
  */
 export async function generateSignedUrls(
-  urls: (string | null | undefined)[],
+  pathsOrUrls: (string | null | undefined)[],
   expiresIn: number = 3600
 ): Promise<(string | null)[]> {
   return Promise.all(
-    urls.map(async (url) => {
-      if (!url) return null;
+    pathsOrUrls.map(async (pathOrUrl) => {
+      if (!pathOrUrl) return null;
 
-      const storagePath = extractStoragePath(url);
-      if (!storagePath) return url;
+      const storagePath = extractStoragePath(pathOrUrl);
 
       try {
         const { data, error } = await supabase.storage
@@ -107,12 +114,12 @@ export async function generateSignedUrls(
 
         if (error) {
           console.error("Failed to generate signed URL:", error);
-          return url;
+          return null;
         }
 
         return data.signedUrl;
       } catch {
-        return url;
+        return null;
       }
     })
   );
@@ -122,13 +129,12 @@ export async function generateSignedUrls(
  * Single function to get a signed URL (non-hook version for callbacks).
  */
 export async function getSignedPhotoUrl(
-  publicUrl: string | null | undefined,
+  photoPathOrUrl: string | null | undefined,
   expiresIn: number = 3600
 ): Promise<string | null> {
-  if (!publicUrl) return null;
+  if (!photoPathOrUrl) return null;
 
-  const storagePath = extractStoragePath(publicUrl);
-  if (!storagePath) return publicUrl;
+  const storagePath = extractStoragePath(photoPathOrUrl);
 
   try {
     const { data, error } = await supabase.storage
@@ -137,11 +143,11 @@ export async function getSignedPhotoUrl(
 
     if (error) {
       console.error("Failed to generate signed URL:", error);
-      return publicUrl;
+      return null;
     }
 
     return data.signedUrl;
   } catch {
-    return publicUrl;
+    return null;
   }
 }
