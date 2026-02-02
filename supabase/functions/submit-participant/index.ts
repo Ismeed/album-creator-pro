@@ -11,7 +11,15 @@ const corsHeaders = {
 serve(async (req) => {
   // Handle CORS preflight
   if (req.method === "OPTIONS") {
-    return new Response(null, { headers: corsHeaders });
+    return new Response("ok", { headers: corsHeaders });
+  }
+
+  // Only allow POST
+  if (req.method !== "POST") {
+    return new Response(
+      JSON.stringify({ error: "Method not allowed" }),
+      { status: 405, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
   }
 
   try {
@@ -26,7 +34,15 @@ serve(async (req) => {
       },
     });
 
-    // Parse multipart form data
+    // Parse multipart form data - ensure content type is multipart/form-data
+    const contentType = req.headers.get("content-type") || "";
+    if (!contentType.includes("multipart/form-data")) {
+      return new Response(
+        JSON.stringify({ error: "Content-Type must be multipart/form-data" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     const formData = await req.formData();
     
     const albumId = formData.get("albumId") as string;
