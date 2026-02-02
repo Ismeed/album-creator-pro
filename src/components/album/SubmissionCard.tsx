@@ -34,6 +34,7 @@ import {
 } from "lucide-react";
 import type { SubmissionWithParticipant } from "@/hooks/useSubmissions";
 import { useProcessImage, BACKGROUND_COLOR_OPTIONS, type BackgroundColor } from "@/hooks/useImageProcessing";
+import { useSignedPhotoUrl } from "@/hooks/useSignedPhotoUrl";
 
 const getColorLabel = (color: string | null): string => {
   if (!color) return "Not set";
@@ -68,6 +69,10 @@ export function SubmissionCard({
   isUpdating,
   isDeleting,
 }: SubmissionCardProps) {
+  // Generate signed URL for the photo
+  const rawPhotoUrl = submission.processed_photo_url || submission.photo_url;
+  const { signedUrl: photoUrl, isLoading: isPhotoLoading } = useSignedPhotoUrl(rawPhotoUrl);
+
   const getApprovalBadge = () => {
     switch (submission.approval_status) {
       case "approved":
@@ -137,11 +142,17 @@ export function SubmissionCard({
           onClick={() => onViewDetails(submission)}
           className="w-20 h-20 rounded-lg bg-muted overflow-hidden shrink-0 relative group"
         >
-          <img
-            src={submission.processed_photo_url || submission.photo_url}
-            alt="Submission"
-            className="w-full h-full object-cover transition-transform group-hover:scale-105"
-          />
+          {isPhotoLoading || !photoUrl ? (
+            <div className="w-full h-full flex items-center justify-center">
+              <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
+            </div>
+          ) : (
+            <img
+              src={photoUrl}
+              alt="Submission"
+              className="w-full h-full object-cover transition-transform group-hover:scale-105"
+            />
+          )}
           <div className="absolute inset-0 bg-foreground/0 group-hover:bg-foreground/20 transition-colors flex items-center justify-center">
             <Eye className="w-5 h-5 text-background opacity-0 group-hover:opacity-100 transition-opacity" />
           </div>
@@ -295,6 +306,11 @@ export function SubmissionDetailSheet({
     (submission?.background_color as BackgroundColor) || "white"
   );
 
+  // Generate signed URLs for photos
+  const rawPhotoUrl = submission?.processed_photo_url || submission?.photo_url;
+  const { signedUrl: photoUrl, isLoading: isPhotoLoading } = useSignedPhotoUrl(rawPhotoUrl);
+  const { signedUrl: originalPhotoUrl } = useSignedPhotoUrl(submission?.photo_url);
+
   if (!submission) return null;
 
   const handleReprocess = () => {
@@ -369,20 +385,26 @@ export function SubmissionDetailSheet({
           {/* Full Photo - Show processed if available, with option to view original */}
           <div className="space-y-2">
             <div className="rounded-xl overflow-hidden bg-muted aspect-square max-h-[40vh] mx-auto">
-              <img
-                src={submission.processed_photo_url || submission.photo_url}
-                alt="Submission"
-                className="w-full h-full object-contain"
-              />
+              {isPhotoLoading || !photoUrl ? (
+                <div className="w-full h-full flex items-center justify-center">
+                  <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
+                </div>
+              ) : (
+                <img
+                  src={photoUrl}
+                  alt="Submission"
+                  className="w-full h-full object-contain"
+                />
+              )}
             </div>
-            {submission.processed_photo_url && (
+            {submission.processed_photo_url && originalPhotoUrl && (
               <div className="flex justify-center gap-2 text-xs">
                 <span className="text-success flex items-center gap-1">
                   <Check className="w-3 h-3" />
                   Processed
                 </span>
                 <a 
-                  href={submission.photo_url} 
+                  href={originalPhotoUrl} 
                   target="_blank" 
                   rel="noopener noreferrer"
                   className="text-muted-foreground hover:text-foreground underline"
