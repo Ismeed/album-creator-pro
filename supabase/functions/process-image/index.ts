@@ -46,7 +46,7 @@ Deno.serve(async (req) => {
 
     console.log(`Processing submission: ${submissionId}`);
 
-    // Get submission with photo URL
+    // Get submission with photo path
     const { data: submission, error: subError } = await supabase
       .from("submissions")
       .select("id, photo_url, album_id, participant_id")
@@ -63,9 +63,22 @@ Deno.serve(async (req) => {
     // Determine background color hex
     const bgColorHex = BACKGROUND_COLORS[backgroundColor] || backgroundColor;
 
-    // Download the original image
-    console.log(`Fetching original image: ${submission.photo_url}`);
-    const imageResponse = await fetch(submission.photo_url);
+    // Generate signed URL to fetch the original image (bucket is private)
+    const { data: signedUrlData, error: signedUrlError } = await supabase.storage
+      .from("photos")
+      .createSignedUrl(submission.photo_url, 300); // 5 min expiry
+
+    if (signedUrlError || !signedUrlData?.signedUrl) {
+      console.error("Failed to generate signed URL:", signedUrlError);
+      return new Response(
+        JSON.stringify({ error: "Failed to access original image" }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Download the original image using signed URL
+    console.log(`Fetching original image from signed URL`);
+    const imageResponse = await fetch(signedUrlData.signedUrl);
     if (!imageResponse.ok) {
       throw new Error("Failed to fetch original image");
     }

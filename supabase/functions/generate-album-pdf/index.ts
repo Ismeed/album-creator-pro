@@ -42,14 +42,27 @@ const CARD_HEIGHT = 180;
 const COLS = 3;
 const ROWS = 4;
 
-async function fetchImageAsBytes(url: string): Promise<Uint8Array | null> {
+async function fetchImageAsBytes(
+  supabase: any,
+  photoPath: string
+): Promise<Uint8Array | null> {
   try {
-    const response = await fetch(url);
+    // Generate signed URL for private bucket access
+    const { data: signedData, error: signError } = await supabase.storage
+      .from("photos")
+      .createSignedUrl(photoPath, 300); // 5 min expiry
+
+    if (signError || !signedData?.signedUrl) {
+      console.error("Failed to generate signed URL:", signError);
+      return null;
+    }
+
+    const response = await fetch(signedData.signedUrl);
     if (!response.ok) return null;
     const arrayBuffer = await response.arrayBuffer();
     return new Uint8Array(arrayBuffer);
   } catch (error) {
-    console.error("Failed to fetch image:", url, error);
+    console.error("Failed to fetch image:", photoPath, error);
     return null;
   }
 }
@@ -129,7 +142,8 @@ async function createCoverPage(
 
 async function createParticipantPages(
   pdfDoc: PDFDocument,
-  participants: ParticipantData[]
+  participants: ParticipantData[],
+  supabase: any
 ) {
   const helveticaBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
   const helvetica = await pdfDoc.embedFont(StandardFonts.Helvetica);
@@ -184,11 +198,11 @@ async function createParticipantPages(
       const cardX = gridStartX + col * cardSpacingX + (cardSpacingX - CARD_WIDTH) / 2;
       const cardY = gridStartY - row * cardSpacingY - CARD_HEIGHT;
 
-      // Try to embed photo
-      const photoUrl = participant.photoUrl;
-      if (photoUrl) {
+      // Try to embed photo - photoUrl is now a storage path
+      const photoPath = participant.photoUrl;
+      if (photoPath) {
         try {
-          const imageBytes = await fetchImageAsBytes(photoUrl);
+          const imageBytes = await fetchImageAsBytes(supabase, photoPath);
           if (imageBytes) {
             let image;
             // Try JPEG first, then PNG
@@ -432,7 +446,7 @@ Deno.serve(async (req) => {
     await createCoverPage(pdfDoc, albumData, participants.length);
 
     // Create participant pages
-    await createParticipantPages(pdfDoc, participants);
+    await createParticipantPages(pdfDoc, participants, supabase);
 
     // Save PDF
     const pdfBytes = await pdfDoc.save();

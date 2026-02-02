@@ -84,12 +84,9 @@ export function useSubmitPhoto(album: PublicAlbum | null) {
 
       setUploadProgress(70);
 
-      // Step 4: Get public URL
-      const { data: urlData } = supabase.storage
-        .from("photos")
-        .getPublicUrl(fileName);
-
-      const photoUrl = urlData.publicUrl;
+      // Step 4: Store the storage path (not public URL) since bucket is private
+      // The path format is: {albumId}/{participantId}.{ext}
+      const photoPath = fileName;
 
       setUploadProgress(85);
 
@@ -101,7 +98,7 @@ export function useSubmitPhoto(album: PublicAlbum | null) {
         .insert({
           album_id: album.id,
           participant_id: participant.id,
-          photo_url: photoUrl,
+          photo_url: photoPath, // Store path, not URL (bucket is private)
           payment_status: paymentStatus,
           approval_status: "pending",
           background_color: data.backgroundColor || "white",
@@ -124,7 +121,7 @@ export function useSubmitPhoto(album: PublicAlbum | null) {
       return {
         participantId: participant.id,
         submissionId: submission.id,
-        photoUrl,
+        photoUrl: photoPath, // Return path for consistency
       };
     },
     onSettled: () => {
