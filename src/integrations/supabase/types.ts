@@ -14,6 +14,53 @@ export type Database = {
   }
   public: {
     Tables: {
+      album_generations: {
+        Row: {
+          album_id: string
+          completed_at: string | null
+          created_at: string
+          error_message: string | null
+          file_path: string | null
+          file_size_bytes: number | null
+          id: string
+          participant_count: number
+          status: string
+          template_id: string
+        }
+        Insert: {
+          album_id: string
+          completed_at?: string | null
+          created_at?: string
+          error_message?: string | null
+          file_path?: string | null
+          file_size_bytes?: number | null
+          id?: string
+          participant_count?: number
+          status?: string
+          template_id?: string
+        }
+        Update: {
+          album_id?: string
+          completed_at?: string | null
+          created_at?: string
+          error_message?: string | null
+          file_path?: string | null
+          file_size_bytes?: number | null
+          id?: string
+          participant_count?: number
+          status?: string
+          template_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "album_generations_album_id_fkey"
+            columns: ["album_id"]
+            isOneToOne: false
+            referencedRelation: "albums"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       albums: {
         Row: {
           album_type: Database["public"]["Enums"]["album_type"]
