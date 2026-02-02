@@ -6,6 +6,48 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type",
 };
 
+// Simple in-memory rate limiting (resets on function cold start)
+// For production, consider using Deno KV or Redis
+const rateLimitMap = new Map<string, { count: number; resetTime: number }>();
+const RATE_LIMIT_MAX = 10; // Max 10 requests per window
+const RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000; // 1 hour window
+
+function isRateLimited(identifier: string): boolean {
+  const now = Date.now();
+  const record = rateLimitMap.get(identifier);
+
+  if (!record || now > record.resetTime) {
+    // Create new window
+    rateLimitMap.set(identifier, {
+      count: 1,
+      resetTime: now + RATE_LIMIT_WINDOW_MS,
+    });
+    return false;
+  }
+
+  if (record.count >= RATE_LIMIT_MAX) {
+    return true;
+  }
+
+  record.count++;
+  return false;
+}
+
+function getClientIdentifier(req: Request, reference: string): string {
+  // Use combination of IP (if available) and reference for rate limiting
+  const forwarded = req.headers.get("x-forwarded-for");
+  const ip = forwarded?.split(",")[0]?.trim() || "unknown";
+  return `${ip}:${reference.slice(0, 8)}`;
+}
+
+// Validate reference format to prevent enumeration
+function isValidReferenceFormat(reference: string): boolean {
+  // Expected format: OLEX-{8chars}-{timestamp}
+  // Example: OLEX-a1b2c3d4-1234567890123
+  const pattern = /^OLEX-[a-f0-9]{8}-\d{13}$/i;
+  return pattern.test(reference);
+}
+
 Deno.serve(async (req) => {
   // Handle CORS preflight
   if (req.method === "OPTIONS") {
@@ -13,15 +55,6 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const PAYSTACK_SECRET_KEY = Deno.env.get("PAYSTACK_SECRET_KEY");
-    if (!PAYSTACK_SECRET_KEY) {
-      throw new Error("Paystack secret key not configured");
-    }
-
-    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
-
     const url = new URL(req.url);
     const reference = url.searchParams.get("reference");
 
@@ -31,6 +64,32 @@ Deno.serve(async (req) => {
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
+
+    // Validate reference format to prevent enumeration attacks
+    if (!isValidReferenceFormat(reference)) {
+      return new Response(
+        JSON.stringify({ error: "Invalid reference format" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Check rate limit
+    const clientId = getClientIdentifier(req, reference);
+    if (isRateLimited(clientId)) {
+      return new Response(
+        JSON.stringify({ error: "Too many requests. Please try again later." }),
+        { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    const PAYSTACK_SECRET_KEY = Deno.env.get("PAYSTACK_SECRET_KEY");
+    if (!PAYSTACK_SECRET_KEY) {
+      throw new Error("Paystack secret key not configured");
+    }
+
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     // Verify with Paystack
     const paystackResponse = await fetch(
@@ -48,7 +107,7 @@ Deno.serve(async (req) => {
       return new Response(
         JSON.stringify({ 
           success: false, 
-          error: paystackData.message || "Verification failed" 
+          error: "Verification failed" // Generic error message
         }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
@@ -87,23 +146,23 @@ Deno.serve(async (req) => {
       }
     }
 
+    // Return minimal response - only essential information
+    // Avoid exposing sensitive details like amounts, channels, metadata
     return new Response(
       JSON.stringify({
         success: isSuccessful,
         status: txData.status,
-        amount: txData.amount / 100, // Convert from kobo
         reference: txData.reference,
-        paidAt: txData.paid_at,
-        channel: txData.channel,
-        metadata,
+        // Only include paidAt for successful transactions
+        ...(isSuccessful && { paidAt: txData.paid_at }),
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (error: unknown) {
     console.error("Verify payment error:", error);
-    const message = error instanceof Error ? error.message : "Internal server error";
+    // Generic error message to avoid information disclosure
     return new Response(
-      JSON.stringify({ error: message }),
+      JSON.stringify({ error: "Verification failed" }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
