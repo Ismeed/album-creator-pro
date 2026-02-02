@@ -7,17 +7,6 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type",
 };
 
-interface ParticipantData {
-  albumId: string;
-  fullName: string;
-  departmentOrClass?: string;
-  identifier?: string;
-  graduationYear?: string;
-  role?: string;
-  quote?: string;
-  cohort?: string;
-}
-
 serve(async (req) => {
   // Handle CORS preflight
   if (req.method === "OPTIONS") {
@@ -36,19 +25,39 @@ serve(async (req) => {
       },
     });
 
-    const data: ParticipantData = await req.json();
+    // Parse multipart form data
+    const formData = await req.formData();
+    
+    const albumId = formData.get("albumId") as string;
+    const fullName = formData.get("fullName") as string;
+    const departmentOrClass = formData.get("departmentOrClass") as string | null;
+    const identifier = formData.get("identifier") as string | null;
+    const graduationYear = formData.get("graduationYear") as string | null;
+    const role = formData.get("role") as string | null;
+    const quote = formData.get("quote") as string | null;
+    const cohort = formData.get("cohort") as string | null;
+    const backgroundColor = formData.get("backgroundColor") as string || "white";
+    const paymentMode = formData.get("paymentMode") as string || "organizer_pays";
+    const photoFile = formData.get("photo") as File | null;
 
     // Validate required fields
-    if (!data.albumId || !data.fullName) {
+    if (!albumId || !fullName) {
       return new Response(
         JSON.stringify({ error: "albumId and fullName are required" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
+    if (!photoFile) {
+      return new Response(
+        JSON.stringify({ error: "Photo file is required" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     // Validate UUID format for albumId
     const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-    if (!uuidRegex.test(data.albumId)) {
+    if (!uuidRegex.test(albumId)) {
       return new Response(
         JSON.stringify({ error: "Invalid album ID format" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -59,7 +68,7 @@ serve(async (req) => {
     const { data: album, error: albumError } = await supabaseAdmin
       .from("albums")
       .select("id, is_locked, submission_deadline")
-      .eq("id", data.albumId)
+      .eq("id", albumId)
       .single();
 
     if (albumError || !album) {
@@ -83,25 +92,59 @@ serve(async (req) => {
       );
     }
 
-    // Validate field lengths to prevent abuse
-    if (data.fullName.length > 100) {
+    // Check for duplicate submission by name
+    const { data: existingSubmissions } = await supabaseAdmin
+      .from("submissions")
+      .select(`id, participant:participants!inner(full_name)`)
+      .eq("album_id", albumId);
+
+    const duplicate = existingSubmissions?.find(
+      (sub: any) => sub.participant?.full_name?.toLowerCase() === fullName.toLowerCase().trim()
+    );
+
+    if (duplicate) {
+      return new Response(
+        JSON.stringify({ error: "You have already submitted a photo for this album." }),
+        { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Validate field lengths
+    if (fullName.length > 100) {
       return new Response(
         JSON.stringify({ error: "Full name is too long (max 100 characters)" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    // Insert participant using service role (bypasses RLS)
+    // Validate file size (10MB max)
+    if (photoFile.size > 10 * 1024 * 1024) {
+      return new Response(
+        JSON.stringify({ error: "Photo file is too large (max 10MB)" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Validate file type
+    const allowedTypes = ["image/jpeg", "image/png", "image/jpg"];
+    if (!allowedTypes.includes(photoFile.type)) {
+      return new Response(
+        JSON.stringify({ error: "Invalid file type. Only JPG and PNG are allowed." }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Step 1: Insert participant
     const { data: participant, error: participantError } = await supabaseAdmin
       .from("participants")
       .insert({
-        full_name: data.fullName.trim(),
-        department_or_class: data.departmentOrClass?.trim() || null,
-        identifier: data.identifier?.trim() || null,
-        graduation_year: data.graduationYear?.trim() || null,
-        role: data.role || "participant",
-        quote: data.quote?.trim() || null,
-        cohort: data.cohort?.trim() || null,
+        full_name: fullName.trim(),
+        department_or_class: departmentOrClass?.trim() || null,
+        identifier: identifier?.trim() || null,
+        graduation_year: graduationYear?.trim() || null,
+        role: role || "participant",
+        quote: quote?.trim() || null,
+        cohort: cohort?.trim() || null,
       })
       .select()
       .single();
@@ -114,8 +157,77 @@ serve(async (req) => {
       );
     }
 
+    // Step 2: Upload photo to storage
+    const fileExt = photoFile.name.split(".").pop()?.toLowerCase() || "jpg";
+    const fileName = `${albumId}/${participant.id}.${fileExt}`;
+    const fileBuffer = await photoFile.arrayBuffer();
+
+    const { error: uploadError } = await supabaseAdmin.storage
+      .from("photos")
+      .upload(fileName, fileBuffer, {
+        contentType: photoFile.type,
+        cacheControl: "3600",
+        upsert: false,
+      });
+
+    if (uploadError) {
+      console.error("Error uploading photo:", uploadError);
+      // Clean up participant
+      await supabaseAdmin.from("participants").delete().eq("id", participant.id);
+      return new Response(
+        JSON.stringify({ error: "Failed to upload photo" }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Step 3: Create submission record
+    const paymentStatus = paymentMode === "organizer_pays" ? "successful" : "pending";
+
+    const { data: submission, error: submissionError } = await supabaseAdmin
+      .from("submissions")
+      .insert({
+        album_id: albumId,
+        participant_id: participant.id,
+        photo_url: fileName,
+        payment_status: paymentStatus,
+        approval_status: "pending",
+        background_color: backgroundColor,
+      })
+      .select()
+      .single();
+
+    if (submissionError) {
+      console.error("Error creating submission:", submissionError);
+      // Clean up photo and participant
+      await supabaseAdmin.storage.from("photos").remove([fileName]);
+      await supabaseAdmin.from("participants").delete().eq("id", participant.id);
+      return new Response(
+        JSON.stringify({ error: "Failed to create submission" }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Step 4: Trigger image processing (fire and forget)
+    const processImageUrl = `${supabaseUrl}/functions/v1/process-image`;
+    fetch(processImageUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${serviceRoleKey}`,
+      },
+      body: JSON.stringify({
+        submissionId: submission.id,
+        backgroundColor: backgroundColor,
+      }),
+    }).catch((err) => console.error("Image processing trigger failed:", err));
+
     return new Response(
-      JSON.stringify({ participant }),
+      JSON.stringify({
+        success: true,
+        participantId: participant.id,
+        submissionId: submission.id,
+        photoUrl: fileName,
+      }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (error) {
