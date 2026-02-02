@@ -1,6 +1,6 @@
 import { useState, useRef, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { useParams } from "react-router-dom";
+import { useParams, useNavigate } from "react-router-dom";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -24,12 +24,14 @@ import {
 } from "lucide-react";
 import { usePublicAlbum, useAlbumStatus } from "@/hooks/usePublicAlbum";
 import { useSubmitPhoto } from "@/hooks/useSubmitPhoto";
+import { useInitializePayment } from "@/hooks/usePayment";
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
 const ACCEPTED_TYPES = ["image/jpeg", "image/jpg", "image/png", "image/webp"];
 
 const formSchema = z.object({
   fullName: z.string().trim().min(2, "Name must be at least 2 characters").max(100, "Name is too long"),
+  email: z.string().trim().email("Please enter a valid email").optional().or(z.literal("")),
   departmentOrClass: z.string().trim().min(1, "Department/Class is required").max(100, "Too long"),
   identifier: z.string().trim().max(50, "ID is too long").optional(),
 });
@@ -38,6 +40,7 @@ type FormData = z.infer<typeof formSchema>;
 
 const ParticipantSubmitPage = () => {
   const { albumId } = useParams<{ albumId: string }>();
+  const navigate = useNavigate();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [step, setStep] = useState<"upload" | "details" | "success">("upload");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -47,6 +50,7 @@ const ParticipantSubmitPage = () => {
   const { data: album, isLoading: albumLoading, error: albumError } = usePublicAlbum(albumId);
   const albumStatus = useAlbumStatus(album);
   const submitMutation = useSubmitPhoto(album ?? null);
+  const initPayment = useInitializePayment();
 
   const {
     register,
@@ -57,6 +61,7 @@ const ParticipantSubmitPage = () => {
     resolver: zodResolver(formSchema),
     defaultValues: {
       fullName: "",
+      email: "",
       departmentOrClass: "",
       identifier: "",
     },
@@ -106,22 +111,41 @@ const ParticipantSubmitPage = () => {
   }, []);
 
   const onSubmit = async (data: FormData) => {
-    if (!selectedFile) return;
+    if (!selectedFile || !album) return;
 
     try {
-      await submitMutation.mutateAsync({
+      const result = await submitMutation.mutateAsync({
         fullName: data.fullName,
         departmentOrClass: data.departmentOrClass,
         identifier: data.identifier,
         photoFile: selectedFile,
       });
-      setStep("success");
+
+      // Check if payment is required (participant_pays mode)
+      if (album.payment_mode === "participant_pays" && album.price_per_participant && album.price_per_participant > 0) {
+        // Redirect to payment page
+        const email = data.email || `${data.fullName.toLowerCase().replace(/\s+/g, '')}@temp.olex.app`;
+        const callbackUrl = `${window.location.origin}/album/${albumId}/payment?submission_id=${result.submissionId}&email=${encodeURIComponent(email)}`;
+        
+        initPayment.mutate({
+          submissionId: result.submissionId,
+          email,
+          callbackUrl,
+        });
+      } else {
+        // No payment needed, show success
+        setStep("success");
+      }
     } catch (error) {
       // Error is handled by the mutation
     }
   };
 
-  const canSubmit = formValues.fullName.length >= 2 && formValues.departmentOrClass.length >= 1;
+  // For participant_pays mode, email is required for payment
+  const requiresPayment = album?.payment_mode === "participant_pays" && (album?.price_per_participant || 0) > 0;
+  const canSubmit = formValues.fullName.length >= 2 && 
+    formValues.departmentOrClass.length >= 1 && 
+    (!requiresPayment || (formValues.email && formValues.email.includes("@")));
 
   // Loading state
   if (albumLoading) {
@@ -331,6 +355,40 @@ const ParticipantSubmitPage = () => {
                       <p className="text-sm text-destructive">{errors.fullName.message}</p>
                     )}
                   </div>
+
+                  {requiresPayment && (
+                    <div className="space-y-2">
+                      <Label htmlFor="email">Email Address *</Label>
+                      <div className="relative">
+                        <svg 
+                          className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground"
+                          fill="none" 
+                          stroke="currentColor" 
+                          viewBox="0 0 24 24"
+                        >
+                          <path 
+                            strokeLinecap="round" 
+                            strokeLinejoin="round" 
+                            strokeWidth={2} 
+                            d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" 
+                          />
+                        </svg>
+                        <Input
+                          id="email"
+                          type="email"
+                          placeholder="your.email@example.com"
+                          {...register("email")}
+                          className="pl-11 h-12"
+                        />
+                      </div>
+                      {errors.email && (
+                        <p className="text-sm text-destructive">{errors.email.message}</p>
+                      )}
+                      <p className="text-xs text-muted-foreground">
+                        Required for payment receipt
+                      </p>
+                    </div>
+                  )}
 
                   <div className="space-y-2">
                     <Label htmlFor="departmentOrClass">Department / Class *</Label>

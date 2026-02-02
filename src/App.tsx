@@ -11,6 +11,7 @@ import DashboardPage from "./pages/DashboardPage";
 import CreateAlbumPage from "./pages/CreateAlbumPage";
 import AlbumDetailPage from "./pages/AlbumDetailPage";
 import ParticipantSubmitPage from "./pages/ParticipantSubmitPage";
+import ParticipantPaymentPage from "./pages/ParticipantPaymentPage";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -26,6 +27,7 @@ const App = () => (
             {/* Public routes */}
             <Route path="/" element={<LandingPage />} />
             <Route path="/submit/:albumId" element={<ParticipantSubmitPage />} />
+            <Route path="/album/:albumId/payment" element={<ParticipantPaymentPage />} />
             <Route path="/demo" element={<ParticipantSubmitPage />} />
             
             {/* Auth routes (redirect if logged in) */}
