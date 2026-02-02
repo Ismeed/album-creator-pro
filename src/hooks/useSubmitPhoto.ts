@@ -54,16 +54,13 @@ export function useSubmitPhoto(album: PublicAlbum | null) {
 
       setUploadProgress(30);
 
-      // Build the edge function URL
-      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-      const apiKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
-      
-      if (!supabaseUrl || !apiKey) {
-        throw new Error("Missing Supabase configuration");
-      }
+      // Build the edge function URL using environment variables
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || "https://rlerhmkryfqzfvfuxpvl.supabase.co";
+      const apiKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJsZXJobWtyeWZxemZ2ZnV4cHZsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njk5NjE5NzMsImV4cCI6MjA4NTUzNzk3M30.XsNsWpCZCIeiMnMOtITjuKaWKggt5_C_6J8l2Q1jwzs";
 
       const submitUrl = `${supabaseUrl}/functions/v1/submit-participant`;
       console.log("Submitting to:", submitUrl);
+      console.log("Form data keys:", [...formData.keys()]);
 
       // Send to edge function (handles participant, photo upload, and submission atomically)
       let response: Response;
@@ -75,9 +72,14 @@ export function useSubmitPhoto(album: PublicAlbum | null) {
           },
           body: formData,
         });
-      } catch (fetchError) {
-        console.error("Network error during fetch:", fetchError);
-        throw new Error("Network error. Please check your internet connection and try again.");
+        console.log("Response status:", response.status);
+      } catch (fetchError: any) {
+        console.error("Fetch error details:", {
+          name: fetchError?.name,
+          message: fetchError?.message,
+          stack: fetchError?.stack
+        });
+        throw new Error(`Submission failed: ${fetchError?.message || "Network error"}`);
       }
 
       setUploadProgress(80);
