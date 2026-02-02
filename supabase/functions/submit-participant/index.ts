@@ -1,26 +1,30 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
+// CORS headers - explicitly list all allowed headers (wildcard * doesn't work with some browsers)
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, accept, origin, x-requested-with",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
   "Access-Control-Max-Age": "86400",
 };
 
 serve(async (req) => {
-  console.log("Request received:", req.method, req.url);
+  const url = new URL(req.url);
+  console.log(`[submit-participant] ${req.method} ${url.pathname}`);
   
-  // Handle CORS preflight - must return 204 with headers
+  // Handle CORS preflight - return 200 with headers (some browsers prefer 200 over 204)
   if (req.method === "OPTIONS") {
+    console.log("[submit-participant] Handling OPTIONS preflight");
     return new Response(null, { 
-      status: 204,
+      status: 200,
       headers: corsHeaders 
     });
   }
 
   // Only allow POST
   if (req.method !== "POST") {
+    console.log(`[submit-participant] Method not allowed: ${req.method}`);
     return new Response(
       JSON.stringify({ error: "Method not allowed" }),
       { status: 405, headers: { ...corsHeaders, "Content-Type": "application/json" } }
