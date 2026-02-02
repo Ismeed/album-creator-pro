@@ -12,6 +12,7 @@ import CreateAlbumPage from "./pages/CreateAlbumPage";
 import AlbumDetailPage from "./pages/AlbumDetailPage";
 import ParticipantSubmitPage from "./pages/ParticipantSubmitPage";
 import ParticipantPaymentPage from "./pages/ParticipantPaymentPage";
+import AlbumPreviewPage from "./pages/AlbumPreviewPage";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -70,6 +71,14 @@ const App = () => (
               element={
                 <ProtectedRoute>
                   <CreateAlbumPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/album/:albumId/preview"
+              element={
+                <ProtectedRoute>
+                  <AlbumPreviewPage />
                 </ProtectedRoute>
               }
             />

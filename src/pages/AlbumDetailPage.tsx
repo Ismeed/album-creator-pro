@@ -12,6 +12,7 @@ import {
   Trash2, 
   Edit2,
   Image,
+  Eye,
   Calendar,
   Building2,
   Users,
@@ -403,6 +404,14 @@ const AlbumDetailPage = () => {
             <Link to={`/album/${album.id}/edit`}>
               <Edit2 className="w-4 h-4 mr-2" />
               Edit
+            </Link>
+          </Button>
+
+          {/* Preview Album Button */}
+          <Button asChild variant="default" className="col-span-2">
+            <Link to={`/album/${album.id}/preview`}>
+              <Eye className="w-4 h-4 mr-2" />
+              Preview Album
             </Link>
           </Button>
 
