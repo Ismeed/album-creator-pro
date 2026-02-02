@@ -1,4 +1,6 @@
 import type { ParticipantEntry } from "@/types/album-templates";
+import { useSignedPhotoUrl } from "@/hooks/useSignedPhotoUrl";
+import { Loader2 } from "lucide-react";
 
 interface ParticipantCardProps {
   participant: ParticipantEntry;
@@ -7,12 +9,47 @@ interface ParticipantCardProps {
 
 export function ParticipantCard({ participant, variant = "classic" }: ParticipantCardProps) {
   // Use processed photo if available, fallback to original
-  const photoUrl = participant.processedPhotoUrl || participant.photoUrl;
+  const rawPhotoUrl = participant.processedPhotoUrl || participant.photoUrl;
+  
+  // Generate signed URL for private bucket access
+  const { signedUrl: photoUrl, isLoading } = useSignedPhotoUrl(rawPhotoUrl);
+
+  if (isLoading || !photoUrl) {
+    return <LoadingCard variant={variant} />;
+  }
 
   if (variant === "modern") {
     return <ModernCard participant={participant} photoUrl={photoUrl} />;
   }
   return <ClassicCard participant={participant} photoUrl={photoUrl} />;
+}
+
+function LoadingCard({ variant }: { variant: "classic" | "modern" }) {
+  if (variant === "modern") {
+    return (
+      <div className="participant-card relative bg-card rounded-xl overflow-hidden border border-border shadow-sm">
+        <div className="w-full aspect-[3/4] bg-muted flex items-center justify-center">
+          <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+        </div>
+        <div className="p-4 bg-card">
+          <div className="h-4 bg-muted rounded animate-pulse mb-1" />
+          <div className="h-3 bg-muted rounded animate-pulse w-2/3" />
+        </div>
+      </div>
+    );
+  }
+  
+  return (
+    <div className="participant-card flex flex-col items-center p-6 bg-card rounded-lg border border-border">
+      <div className="w-40 h-48 mb-4 overflow-hidden rounded-md bg-muted flex items-center justify-center">
+        <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+      </div>
+      <div className="text-center space-y-1 w-full">
+        <div className="h-5 bg-muted rounded animate-pulse mx-auto w-3/4" />
+        <div className="h-4 bg-muted rounded animate-pulse mx-auto w-1/2" />
+      </div>
+    </div>
+  );
 }
 
 interface CardInnerProps {
