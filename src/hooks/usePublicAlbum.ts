@@ -1,11 +1,14 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import type { Tables } from "@/integrations/supabase/types";
+import type { Json } from "@/integrations/supabase/types";
 
 export type PublicAlbum = Pick<
   Tables<"albums">,
   "id" | "title" | "institution_name" | "album_type" | "submission_deadline" | "is_locked" | "payment_mode" | "price_per_participant"
->;
+> & {
+  required_fields: Json | null;
+};
 
 export function usePublicAlbum(albumId: string | undefined) {
   return useQuery({
@@ -15,7 +18,7 @@ export function usePublicAlbum(albumId: string | undefined) {
 
       const { data, error } = await supabase
         .from("albums")
-        .select("id, title, institution_name, album_type, submission_deadline, is_locked, payment_mode, price_per_participant")
+        .select("id, title, institution_name, album_type, submission_deadline, is_locked, payment_mode, price_per_participant, required_fields")
         .eq("id", albumId)
         .single();
 

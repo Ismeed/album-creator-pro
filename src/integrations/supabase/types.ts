@@ -71,6 +71,7 @@ export type Database = {
           organizer_id: string
           payment_mode: Database["public"]["Enums"]["payment_mode"]
           price_per_participant: number | null
+          required_fields: Json | null
           submission_deadline: string | null
           title: string
         }
@@ -83,6 +84,7 @@ export type Database = {
           organizer_id: string
           payment_mode?: Database["public"]["Enums"]["payment_mode"]
           price_per_participant?: number | null
+          required_fields?: Json | null
           submission_deadline?: string | null
           title: string
         }
@@ -95,6 +97,7 @@ export type Database = {
           organizer_id?: string
           payment_mode?: Database["public"]["Enums"]["payment_mode"]
           price_per_participant?: number | null
+          required_fields?: Json | null
           submission_deadline?: string | null
           title?: string
         }
@@ -131,25 +134,37 @@ export type Database = {
       }
       participants: {
         Row: {
+          cohort: string | null
           created_at: string
           department_or_class: string | null
           full_name: string
+          graduation_year: string | null
           id: string
           identifier: string | null
+          quote: string | null
+          role: string | null
         }
         Insert: {
+          cohort?: string | null
           created_at?: string
           department_or_class?: string | null
           full_name: string
+          graduation_year?: string | null
           id?: string
           identifier?: string | null
+          quote?: string | null
+          role?: string | null
         }
         Update: {
+          cohort?: string | null
           created_at?: string
           department_or_class?: string | null
           full_name?: string
+          graduation_year?: string | null
           id?: string
           identifier?: string | null
+          quote?: string | null
+          role?: string | null
         }
         Relationships: []
       }
