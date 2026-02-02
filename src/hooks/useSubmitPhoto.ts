@@ -16,6 +16,9 @@ interface SubmissionResult {
   photoUrl: string;
 }
 
+// Edge function URL for participant creation
+const SUBMIT_PARTICIPANT_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/submit-participant`;
+
 export function useSubmitPhoto(album: PublicAlbum | null) {
   const [uploadProgress, setUploadProgress] = useState(0);
 
@@ -47,22 +50,31 @@ export function useSubmitPhoto(album: PublicAlbum | null) {
 
       setUploadProgress(20);
 
-      // Step 2: Create participant record with expanded fields
-      const { data: participant, error: participantError } = await supabase
-        .from("participants")
-        .insert({
-          full_name: data.fullName.trim(),
-          department_or_class: data.departmentOrClass?.trim() || null,
+      // Step 2: Create participant via edge function (bypasses RLS using service role)
+      const participantResponse = await fetch(SUBMIT_PARTICIPANT_URL, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "apikey": import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+        },
+        body: JSON.stringify({
+          albumId: album.id,
+          fullName: data.fullName.trim(),
+          departmentOrClass: data.departmentOrClass?.trim() || null,
           identifier: data.identifier?.trim() || null,
-          graduation_year: data.graduationYear?.trim() || null,
+          graduationYear: data.graduationYear?.trim() || null,
           role: (data.role as ParticipantRole) || "participant",
           quote: data.quote?.trim() || null,
           cohort: data.cohort?.trim() || null,
-        })
-        .select()
-        .single();
+        }),
+      });
 
-      if (participantError) throw participantError;
+      if (!participantResponse.ok) {
+        const errorData = await participantResponse.json();
+        throw new Error(errorData.error || "Failed to create participant");
+      }
+
+      const { participant } = await participantResponse.json();
 
       setUploadProgress(40);
 
@@ -78,8 +90,9 @@ export function useSubmitPhoto(album: PublicAlbum | null) {
         });
 
       if (uploadError) {
-        // Clean up participant if upload fails
-        await supabase.from("participants").delete().eq("id", participant.id);
+        // Note: participant cleanup would need a separate edge function
+        // For now, we log and throw
+        console.error("Photo upload failed:", uploadError);
         throw new Error("Failed to upload photo. Please try again.");
       }
 
@@ -107,9 +120,8 @@ export function useSubmitPhoto(album: PublicAlbum | null) {
         .single();
 
       if (submissionError) {
-        // Clean up photo and participant if submission fails
+        // Clean up photo if submission fails
         await supabase.storage.from("photos").remove([fileName]);
-        await supabase.from("participants").delete().eq("id", participant.id);
         throw submissionError;
       }
 
