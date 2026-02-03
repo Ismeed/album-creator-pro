@@ -1,12 +1,19 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import type { Tables } from "@/integrations/supabase/types";
+import type { Database } from "@/integrations/supabase/types";
 import type { Json } from "@/integrations/supabase/types";
 
-export type PublicAlbum = Pick<
-  Tables<"albums">,
-  "id" | "title" | "institution_name" | "album_type" | "submission_deadline" | "is_locked" | "payment_mode" | "price_per_participant"
-> & {
+// Type for the public album info returned by the secure RPC function
+// This intentionally excludes organizer_id to prevent identity tracking
+export type PublicAlbum = {
+  id: string;
+  title: string;
+  institution_name: string | null;
+  album_type: Database["public"]["Enums"]["album_type"];
+  submission_deadline: string | null;
+  is_locked: boolean;
+  payment_mode: Database["public"]["Enums"]["payment_mode"];
+  price_per_participant: number | null;
   required_fields: Json | null;
 };
 
@@ -16,11 +23,9 @@ export function usePublicAlbum(albumId: string | undefined) {
     queryFn: async (): Promise<PublicAlbum | null> => {
       if (!albumId) return null;
 
+      // Use the secure RPC function that doesn't expose organizer_id
       const { data, error } = await supabase
-        .from("albums")
-        .select("id, title, institution_name, album_type, submission_deadline, is_locked, payment_mode, price_per_participant, required_fields")
-        .eq("id", albumId)
-        .single();
+        .rpc("get_public_album_info", { _album_id: albumId });
 
       if (error) {
         if (error.code === "PGRST116") {
@@ -29,7 +34,12 @@ export function usePublicAlbum(albumId: string | undefined) {
         throw error;
       }
 
-      return data;
+      // RPC returns an array, get the first (and only) result
+      if (!data || data.length === 0) {
+        return null;
+      }
+
+      return data[0] as PublicAlbum;
     },
     enabled: !!albumId,
     retry: false,
