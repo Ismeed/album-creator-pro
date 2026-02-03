@@ -276,6 +276,20 @@ export type Database = {
         Args: { _submission_id: string }
         Returns: string
       }
+      get_public_album_info: {
+        Args: { _album_id: string }
+        Returns: {
+          album_type: Database["public"]["Enums"]["album_type"]
+          id: string
+          institution_name: string
+          is_locked: boolean
+          payment_mode: Database["public"]["Enums"]["payment_mode"]
+          price_per_participant: number
+          required_fields: Json
+          submission_deadline: string
+          title: string
+        }[]
+      }
       is_album_open_for_submission: {
         Args: { _album_id: string }
         Returns: boolean
