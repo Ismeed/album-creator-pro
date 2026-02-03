@@ -135,10 +135,52 @@ serve(async (req) => {
       );
     }
 
-    // Validate field lengths
+    // Validate field lengths to match database constraints
+    if (fullName.length < 2) {
+      return new Response(
+        JSON.stringify({ error: "Full name is too short (min 2 characters)" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     if (fullName.length > 100) {
       return new Response(
         JSON.stringify({ error: "Full name is too long (max 100 characters)" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    if (departmentOrClass && departmentOrClass.length > 100) {
+      return new Response(
+        JSON.stringify({ error: "Department/Class is too long (max 100 characters)" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    if (quote && quote.length > 200) {
+      return new Response(
+        JSON.stringify({ error: "Quote is too long (max 200 characters)" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    if (cohort && cohort.length > 100) {
+      return new Response(
+        JSON.stringify({ error: "Cohort is too long (max 100 characters)" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    if (identifier && identifier.length > 50) {
+      return new Response(
+        JSON.stringify({ error: "Identifier is too long (max 50 characters)" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    if (graduationYear && !/^\d{4}(\/\d{4})?$/.test(graduationYear)) {
+      return new Response(
+        JSON.stringify({ error: "Invalid graduation year format (use YYYY or YYYY/YYYY)" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
