@@ -1,13 +1,16 @@
 import type { ParticipantEntry } from "@/types/album-templates";
+import { getDisplayFields } from "@/types/album-templates";
+import type { StoredSchemaConfig } from "@/types/field-schemas";
 import { useSignedPhotoUrl } from "@/hooks/useSignedPhotoUrl";
 import { Loader2 } from "lucide-react";
 
 interface ParticipantCardProps {
   participant: ParticipantEntry;
   variant?: "classic" | "modern";
+  schemaConfig?: StoredSchemaConfig;
 }
 
-export function ParticipantCard({ participant, variant = "classic" }: ParticipantCardProps) {
+export function ParticipantCard({ participant, variant = "classic", schemaConfig }: ParticipantCardProps) {
   // Use processed photo if available, fallback to original
   const rawPhotoUrl = participant.processedPhotoUrl || participant.photoUrl;
   
@@ -19,9 +22,9 @@ export function ParticipantCard({ participant, variant = "classic" }: Participan
   }
 
   if (variant === "modern") {
-    return <ModernCard participant={participant} photoUrl={photoUrl} />;
+    return <ModernCard participant={participant} photoUrl={photoUrl} schemaConfig={schemaConfig} />;
   }
-  return <ClassicCard participant={participant} photoUrl={photoUrl} />;
+  return <ClassicCard participant={participant} photoUrl={photoUrl} schemaConfig={schemaConfig} />;
 }
 
 function LoadingCard({ variant }: { variant: "classic" | "modern" }) {
@@ -55,9 +58,39 @@ function LoadingCard({ variant }: { variant: "classic" | "modern" }) {
 interface CardInnerProps {
   participant: ParticipantEntry;
   photoUrl: string;
+  schemaConfig?: StoredSchemaConfig;
 }
 
-function ClassicCard({ participant, photoUrl }: CardInnerProps) {
+// Get participant field value by camelCase key
+function getFieldValue(participant: ParticipantEntry, fieldKey: string): string | undefined {
+  const value = participant[fieldKey as keyof ParticipantEntry];
+  return typeof value === "string" ? value : undefined;
+}
+
+// Render secondary info based on schema
+function renderSecondaryInfo(participant: ParticipantEntry, schemaConfig?: StoredSchemaConfig) {
+  const displayFields = getDisplayFields(schemaConfig);
+  
+  // Get first two non-empty fields for display
+  const fieldsToShow = displayFields
+    .map(fieldKey => getFieldValue(participant, fieldKey))
+    .filter(Boolean)
+    .slice(0, 2);
+  
+  if (fieldsToShow.length === 0) return null;
+  
+  return (
+    <>
+      {fieldsToShow.map((value, index) => (
+        <p key={index} className={index === 0 ? "text-sm text-muted-foreground" : "text-xs text-muted-foreground font-mono"}>
+          {value}
+        </p>
+      ))}
+    </>
+  );
+}
+
+function ClassicCard({ participant, photoUrl, schemaConfig }: CardInnerProps) {
   return (
     <div className="participant-card flex flex-col items-center p-6 bg-card rounded-lg border border-border">
       {/* Photo container - standardized size */}
@@ -75,16 +108,12 @@ function ClassicCard({ participant, photoUrl }: CardInnerProps) {
         <h3 className="text-lg font-semibold text-foreground leading-tight">
           {participant.fullName}
         </h3>
-
-        {participant.departmentOrClass && (
-          <p className="text-sm text-muted-foreground">
-            {participant.departmentOrClass}
-          </p>
-        )}
-
-        {participant.identifier && (
-          <p className="text-xs text-muted-foreground font-mono">
-            {participant.identifier}
+        {renderSecondaryInfo(participant, schemaConfig)}
+        
+        {/* Quote display for schemas that include it */}
+        {participant.quote && (
+          <p className="text-xs text-muted-foreground italic mt-2 max-w-[180px]">
+            "{participant.quote}"
           </p>
         )}
       </div>
@@ -92,7 +121,9 @@ function ClassicCard({ participant, photoUrl }: CardInnerProps) {
   );
 }
 
-function ModernCard({ participant, photoUrl }: CardInnerProps) {
+function ModernCard({ participant, photoUrl, schemaConfig }: CardInnerProps) {
+  const displayFields = getDisplayFields(schemaConfig);
+  
   return (
     <div className="participant-card relative bg-card rounded-xl overflow-hidden border border-border shadow-sm">
       {/* Photo container - standardized size */}
@@ -112,17 +143,32 @@ function ModernCard({ participant, photoUrl }: CardInnerProps) {
         </h3>
 
         <div className="flex flex-wrap gap-x-2 gap-y-0.5">
-          {participant.departmentOrClass && (
-            <span className="text-sm text-muted-foreground">
-              {participant.departmentOrClass}
-            </span>
-          )}
-          {participant.identifier && (
-            <span className="text-xs text-primary font-medium">
-              #{participant.identifier}
-            </span>
-          )}
+          {displayFields.slice(0, 2).map(fieldKey => {
+            const value = getFieldValue(participant, fieldKey);
+            if (!value) return null;
+            
+            // Style identifier-like fields differently
+            const isIdField = fieldKey === "identifier";
+            return (
+              <span 
+                key={fieldKey}
+                className={isIdField 
+                  ? "text-xs text-primary font-medium" 
+                  : "text-sm text-muted-foreground"
+                }
+              >
+                {isIdField ? `#${value}` : value}
+              </span>
+            );
+          })}
         </div>
+        
+        {/* Quote for modern cards */}
+        {participant.quote && (
+          <p className="text-xs text-muted-foreground italic mt-2 line-clamp-2">
+            "{participant.quote}"
+          </p>
+        )}
       </div>
     </div>
   );

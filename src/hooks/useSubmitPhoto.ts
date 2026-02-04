@@ -1,9 +1,17 @@
 import { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import type { PublicAlbum } from "@/hooks/usePublicAlbum";
-import type { ParticipantFormData, ParticipantRole } from "@/components/submission/ParticipantDetailsForm";
 
-interface SubmissionData extends Omit<ParticipantFormData, 'confirmEmail'> {
+// Flexible submission data that works with dynamic forms
+export interface SubmissionData {
+  fullName: string;
+  email: string;
+  departmentOrClass?: string;
+  identifier?: string;
+  graduationYear?: string;
+  role?: string;
+  quote?: string;
+  cohort?: string;
   photoFile: File;
 }
 
@@ -40,7 +48,7 @@ export function useSubmitPhoto(album: PublicAlbum | null) {
         formData.append("graduationYear", data.graduationYear.trim());
       }
       if (data.role) {
-        formData.append("role", data.role as ParticipantRole);
+        formData.append("role", data.role.trim());
       }
       if (data.quote) {
         formData.append("quote", data.quote.trim());

@@ -46,6 +46,7 @@ export function AlbumTemplate({ data, showWatermark = false }: AlbumTemplateProp
           variant={variant}
           columnsPerPage={variant === "modern" ? 3 : 4}
           rowsPerPage={3}
+          schemaConfig={data.schemaConfig}
         />
       ) : (
         <div className="album-page flex items-center justify-center min-h-[297mm] bg-background">
