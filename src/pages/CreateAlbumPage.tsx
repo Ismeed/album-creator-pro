@@ -14,44 +14,33 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { ArrowLeft, Image, Users, Calendar, Check, Loader2, Building2, DollarSign } from "lucide-react";
+import { 
+  ArrowLeft, 
+  Image, 
+  Calendar, 
+  Check, 
+  Loader2, 
+  Building2,
+  Settings2
+} from "lucide-react";
 import { useCreateAlbum } from "@/hooks/useAlbums";
 import { useToast } from "@/hooks/use-toast";
+import { SchemaConfigurator } from "@/components/album/SchemaConfigurator";
+import {
+  type AlbumCategory,
+  type StoredSchemaConfig,
+  ALBUM_CATEGORIES,
+  createDefaultSchemaConfig,
+} from "@/types/field-schemas";
 import type { Database } from "@/integrations/supabase/types";
 
-type AlbumType = Database["public"]["Enums"]["album_type"];
 type PaymentMode = Database["public"]["Enums"]["payment_mode"];
 
-const albumTypes: { value: AlbumType; label: string }[] = [
-  { value: "class", label: "Class" },
-  { value: "department", label: "Department" },
-  { value: "faculty", label: "Faculty" },
-  { value: "training", label: "Training" },
-  { value: "bootcamp", label: "Bootcamp" },
-  { value: "other", label: "Other" },
-];
-
-const paymentModes: { value: PaymentMode; label: string }[] = [
-  { value: "organizer_pays", label: "Organizer Pays" },
-  { value: "participant_pays", label: "Participant Pays" },
-];
-
 const formSchema = z.object({
-  title: z.string().min(1, "Album title is required"),
-  institution_name: z.string().min(1, "Institution name is required"),
+  title: z.string().min(1, "Album title is required").max(200, "Title is too long"),
+  institution_name: z.string().min(1, "Institution name is required").max(200, "Name is too long"),
   album_type: z.enum(["class", "department", "faculty", "training", "bootcamp", "other"] as const),
-  payment_mode: z.enum(["organizer_pays", "participant_pays"] as const),
-  price_per_participant: z.string().optional(),
   submission_deadline: z.string().optional(),
-}).refine((data) => {
-  // If participant pays, price is required
-  if (data.payment_mode === "participant_pays") {
-    return data.price_per_participant && parseFloat(data.price_per_participant) > 0;
-  }
-  return true;
-}, {
-  message: "Price per participant is required when participants pay",
-  path: ["price_per_participant"],
 }).refine((data) => {
   // Deadline must be in the future if set
   if (data.submission_deadline) {
@@ -70,6 +59,12 @@ const CreateAlbumPage = () => {
   const { toast } = useToast();
   const [step, setStep] = useState(1);
   const createAlbum = useCreateAlbum();
+  
+  // Schema configuration state
+  const [schemaConfig, setSchemaConfig] = useState<StoredSchemaConfig>(
+    createDefaultSchemaConfig("class")
+  );
+  const [departments, setDepartments] = useState<string[]>([]);
 
   const {
     register,
@@ -84,34 +79,60 @@ const CreateAlbumPage = () => {
       title: "",
       institution_name: "",
       album_type: "class",
-      payment_mode: "organizer_pays",
-      price_per_participant: "",
       submission_deadline: "",
     },
   });
 
-  const paymentMode = watch("payment_mode");
+  const albumType = watch("album_type");
   const formValues = watch();
 
+  // Update schema when album type changes
+  const handleAlbumTypeChange = (value: AlbumCategory) => {
+    setValue("album_type", value);
+    setSchemaConfig(createDefaultSchemaConfig(value));
+    // Reset departments when switching away from faculty
+    if (value !== "faculty") {
+      setDepartments([]);
+    }
+  };
+
   const onSubmit = async (data: FormData) => {
-    if (step < 2) {
-      const isValid = await trigger(["title", "institution_name", "album_type"]);
-      if (isValid) {
-        setStep(2);
+    if (step < 3) {
+      if (step === 1) {
+        const isValid = await trigger(["title", "institution_name", "album_type"]);
+        if (isValid) {
+          setStep(2);
+        }
+      } else if (step === 2) {
+        // Validate faculty has at least one department
+        if (data.album_type === "faculty" && departments.length === 0) {
+          toast({
+            title: "Departments Required",
+            description: "Please add at least one department for this faculty album.",
+            variant: "destructive",
+          });
+          return;
+        }
+        setStep(3);
       }
       return;
     }
 
     try {
+      // Build the stored config with departments if applicable
+      const finalConfig: StoredSchemaConfig = {
+        ...schemaConfig,
+        ...(departments.length > 0 && { departments }),
+      };
+
       const album = await createAlbum.mutateAsync({
         title: data.title,
         institution_name: data.institution_name,
         album_type: data.album_type,
-        payment_mode: data.payment_mode,
-        price_per_participant: data.price_per_participant 
-          ? parseFloat(data.price_per_participant) 
-          : null,
+        payment_mode: "organizer_pays" as PaymentMode, // Payments disabled for MVP
+        price_per_participant: null,
         submission_deadline: data.submission_deadline || null,
+        required_fields: finalConfig as unknown as Database["public"]["Tables"]["albums"]["Insert"]["required_fields"],
       });
 
       toast({
@@ -136,8 +157,9 @@ const CreateAlbumPage = () => {
   };
 
   const canProceedStep1 = formValues.title.length > 0 && formValues.institution_name.length > 0;
-  const canProceedStep2 = paymentMode === "organizer_pays" || 
-    (formValues.price_per_participant && parseFloat(formValues.price_per_participant) > 0);
+  const canProceedStep2 = albumType !== "faculty" || departments.length > 0;
+
+  const selectedCategory = ALBUM_CATEGORIES.find(c => c.value === albumType);
 
   return (
     <main className="min-h-[100dvh] bg-background safe-top safe-bottom">
@@ -157,7 +179,7 @@ const CreateAlbumPage = () => {
       {/* Progress */}
       <div className="mobile-container py-4">
         <div className="flex gap-2">
-          {[1, 2].map((s) => (
+          {[1, 2, 3].map((s) => (
             <div
               key={s}
               className={`h-1 flex-1 rounded-full transition-colors ${
@@ -167,12 +189,13 @@ const CreateAlbumPage = () => {
           ))}
         </div>
         <p className="text-xs text-muted-foreground mt-2">
-          Step {step} of 2
+          Step {step} of 3: {step === 1 ? "Basic Info" : step === 2 ? "Field Configuration" : "Deadline & Review"}
         </p>
       </div>
 
       {/* Form */}
       <form onSubmit={handleSubmit(onSubmit)} className="mobile-container pb-8">
+        {/* Step 1: Basic Info */}
         {step === 1 && (
           <motion.div
             key="step1"
@@ -225,31 +248,35 @@ const CreateAlbumPage = () => {
             </div>
 
             <div className="space-y-2">
-              <Label>
-                <span className="flex items-center gap-2">
-                  <Users className="w-4 h-4" />
-                  Album Type
-                </span>
-              </Label>
+              <Label>Album Category *</Label>
               <Select
-                value={formValues.album_type}
-                onValueChange={(value: AlbumType) => setValue("album_type", value)}
+                value={albumType}
+                onValueChange={handleAlbumTypeChange}
               >
                 <SelectTrigger className="h-12">
-                  <SelectValue placeholder="Select album type" />
+                  <SelectValue placeholder="Select album category" />
                 </SelectTrigger>
                 <SelectContent>
-                  {albumTypes.map((type) => (
-                    <SelectItem key={type.value} value={type.value}>
-                      {type.label}
+                  {ALBUM_CATEGORIES.map((cat) => (
+                    <SelectItem key={cat.value} value={cat.value}>
+                      <div className="flex flex-col items-start">
+                        <span>{cat.label}</span>
+                        <span className="text-xs text-muted-foreground">{cat.description}</span>
+                      </div>
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
+              {selectedCategory && (
+                <p className="text-xs text-muted-foreground">
+                  Uses Schema {selectedCategory.schemaType}: {selectedCategory.description}
+                </p>
+              )}
             </div>
           </motion.div>
         )}
 
+        {/* Step 2: Schema Configuration */}
         {step === 2 && (
           <motion.div
             key="step2"
@@ -260,67 +287,46 @@ const CreateAlbumPage = () => {
           >
             <div className="text-center mb-8">
               <div className="w-16 h-16 rounded-2xl accent-gradient flex items-center justify-center mx-auto mb-4">
-                <DollarSign className="w-8 h-8 text-accent-foreground" />
+                <Settings2 className="w-8 h-8 text-accent-foreground" />
               </div>
               <h2 className="text-xl font-bold text-foreground">
-                Payment & Deadline
+                Field Configuration
               </h2>
               <p className="text-sm text-muted-foreground mt-1">
-                Configure billing and collection settings
+                Customize the participant form fields
               </p>
             </div>
 
-            <div className="space-y-2">
-              <Label>Payment Mode</Label>
-              <Select
-                value={formValues.payment_mode}
-                onValueChange={(value: PaymentMode) => setValue("payment_mode", value)}
-              >
-                <SelectTrigger className="h-12">
-                  <SelectValue placeholder="Select who pays" />
-                </SelectTrigger>
-                <SelectContent>
-                  {paymentModes.map((mode) => (
-                    <SelectItem key={mode.value} value={mode.value}>
-                      {mode.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <p className="text-xs text-muted-foreground">
-                {paymentMode === "organizer_pays" 
-                  ? "You pay for the album generation"
-                  : "Each participant pays individually"}
+            <SchemaConfigurator
+              category={albumType}
+              config={schemaConfig}
+              onChange={setSchemaConfig}
+              departments={departments}
+              onDepartmentsChange={albumType === "faculty" ? setDepartments : undefined}
+            />
+          </motion.div>
+        )}
+
+        {/* Step 3: Deadline & Review */}
+        {step === 3 && (
+          <motion.div
+            key="step3"
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -20 }}
+            className="space-y-6"
+          >
+            <div className="text-center mb-8">
+              <div className="w-16 h-16 rounded-2xl accent-gradient flex items-center justify-center mx-auto mb-4">
+                <Calendar className="w-8 h-8 text-accent-foreground" />
+              </div>
+              <h2 className="text-xl font-bold text-foreground">
+                Deadline & Review
+              </h2>
+              <p className="text-sm text-muted-foreground mt-1">
+                Set deadline and review your album settings
               </p>
             </div>
-
-            {paymentMode === "participant_pays" && (
-              <motion.div
-                initial={{ opacity: 0, height: 0 }}
-                animate={{ opacity: 1, height: "auto" }}
-                exit={{ opacity: 0, height: 0 }}
-                className="space-y-2"
-              >
-                <Label htmlFor="price_per_participant">
-                  <span className="flex items-center gap-2">
-                    <DollarSign className="w-4 h-4" />
-                    Price Per Participant *
-                  </span>
-                </Label>
-                <Input
-                  id="price_per_participant"
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  placeholder="e.g., 5.00"
-                  {...register("price_per_participant")}
-                  className="h-12"
-                />
-                {errors.price_per_participant && (
-                  <p className="text-sm text-destructive">{errors.price_per_participant.message}</p>
-                )}
-              </motion.div>
-            )}
 
             <div className="space-y-2">
               <Label htmlFor="submission_deadline">
@@ -360,22 +366,28 @@ const CreateAlbumPage = () => {
                   </span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-muted-foreground">Type</span>
+                  <span className="text-muted-foreground">Category</span>
                   <span className="font-medium text-foreground">
-                    {albumTypes.find(t => t.value === formValues.album_type)?.label}
+                    {selectedCategory?.label}
                   </span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-muted-foreground">Payment</span>
+                  <span className="text-muted-foreground">Schema</span>
                   <span className="font-medium text-foreground">
-                    {paymentModes.find(m => m.value === formValues.payment_mode)?.label}
+                    Type {schemaConfig.schemaType}
                   </span>
                 </div>
-                {paymentMode === "participant_pays" && formValues.price_per_participant && (
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Fields</span>
+                  <span className="font-medium text-foreground">
+                    {schemaConfig.fields.filter(f => f.required).length} required, {schemaConfig.fields.filter(f => !f.required).length} optional
+                  </span>
+                </div>
+                {departments.length > 0 && (
                   <div className="flex justify-between">
-                    <span className="text-muted-foreground">Price</span>
+                    <span className="text-muted-foreground">Departments</span>
                     <span className="font-medium text-foreground">
-                      ${formValues.price_per_participant}/person
+                      {departments.length} defined
                     </span>
                   </div>
                 )}
@@ -388,6 +400,14 @@ const CreateAlbumPage = () => {
                   </div>
                 )}
               </div>
+            </div>
+
+            {/* Testing mode notice */}
+            <div className="rounded-lg bg-accent/10 border border-accent/20 p-3">
+              <p className="text-xs text-accent-foreground">
+                <strong>Testing Mode:</strong> Payments are disabled. 
+                Album generation is free during the testing phase.
+              </p>
             </div>
           </motion.div>
         )}
@@ -410,7 +430,7 @@ const CreateAlbumPage = () => {
                 <Loader2 className="w-5 h-5 mr-2 animate-spin" />
                 Creating...
               </>
-            ) : step === 2 ? (
+            ) : step === 3 ? (
               <>
                 <Check className="w-5 h-5 mr-2" />
                 Create Album

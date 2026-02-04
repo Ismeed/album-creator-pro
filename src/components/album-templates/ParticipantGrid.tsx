@@ -1,4 +1,5 @@
 import type { ParticipantEntry } from "@/types/album-templates";
+import type { StoredSchemaConfig } from "@/types/field-schemas";
 import { ParticipantCard } from "./ParticipantCard";
 
 interface ParticipantGridProps {
@@ -6,6 +7,7 @@ interface ParticipantGridProps {
   variant?: "classic" | "modern";
   columnsPerPage?: number;
   rowsPerPage?: number;
+  schemaConfig?: StoredSchemaConfig;
 }
 
 export function ParticipantGrid({
@@ -13,6 +15,7 @@ export function ParticipantGrid({
   variant = "classic",
   columnsPerPage = 4,
   rowsPerPage = 3,
+  schemaConfig,
 }: ParticipantGridProps) {
   const participantsPerPage = columnsPerPage * rowsPerPage;
 
@@ -54,6 +57,7 @@ export function ParticipantGrid({
                 key={participant.id}
                 participant={participant}
                 variant={variant}
+                schemaConfig={schemaConfig}
               />
             ))}
           </div>

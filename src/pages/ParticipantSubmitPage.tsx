@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useParams } from "react-router-dom";
 import { 
@@ -13,7 +13,12 @@ import {
 import { usePublicAlbum, useAlbumStatus } from "@/hooks/usePublicAlbum";
 import { useSubmitPhoto } from "@/hooks/useSubmitPhoto";
 import { PhotoUploader } from "@/components/submission/PhotoUploader";
-import { ParticipantDetailsForm, type ParticipantField, type ParticipantFormData } from "@/components/submission/ParticipantDetailsForm";
+import { DynamicParticipantForm, type DynamicFormData } from "@/components/submission/DynamicParticipantForm";
+import {
+  parseSchemaConfig,
+  createDefaultSchemaConfig,
+  type StoredSchemaConfig,
+} from "@/types/field-schemas";
 
 type SubmissionStep = "upload" | "details" | "success";
 
@@ -28,26 +33,36 @@ const ParticipantSubmitPage = () => {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   
   // Form data for success display
-  const [submittedData, setSubmittedData] = useState<ParticipantFormData | null>(null);
+  const [submittedData, setSubmittedData] = useState<DynamicFormData | null>(null);
 
   const { data: album, isLoading: albumLoading, error: albumError } = usePublicAlbum(albumId);
   const albumStatus = useAlbumStatus(album);
   const submitMutation = useSubmitPhoto(album ?? null);
 
-  // Get required fields from album config (default to basic fields)
-  const requiredFields: ParticipantField[] = album?.required_fields 
-    ? (album.required_fields as ParticipantField[])
-    : ["full_name", "department_or_class"];
+  // Parse schema config from album
+  const schemaConfig: StoredSchemaConfig = useMemo(() => {
+    if (!album?.required_fields) {
+      return createDefaultSchemaConfig(album?.album_type || "other");
+    }
+    const parsed = parseSchemaConfig(album.required_fields);
+    return parsed || createDefaultSchemaConfig(album.album_type);
+  }, [album?.required_fields, album?.album_type]);
+
+  // Get departments for faculty albums
+  const departments = useMemo(() => {
+    if (!album?.required_fields) return undefined;
+    const parsed = parseSchemaConfig(album.required_fields);
+    return parsed?.departments;
+  }, [album?.required_fields]);
 
   // Handle photo selection from uploader
   const handlePhotoSelected = useCallback((file: File, preview: string) => {
     setSelectedFile(file);
     setPreviewUrl(preview);
-    // Go directly to details after photo is selected
     setStep("details");
   }, []);
 
-  // Handle clearing photo - go back to upload step
+  // Handle clearing photo
   const handleClearPhoto = useCallback(() => {
     setSelectedFile(null);
     setPreviewUrl(null);
@@ -56,17 +71,23 @@ const ParticipantSubmitPage = () => {
 
   // Handle going back from details to upload
   const handleBackToUpload = useCallback(() => {
-    // Keep the photo but go back to upload step to allow changing it
     setStep("upload");
   }, []);
 
   // Handle form submission
-  const handleSubmit = async (data: ParticipantFormData) => {
+  const handleSubmit = async (data: DynamicFormData) => {
     if (!selectedFile || !album) return;
 
     try {
       await submitMutation.mutateAsync({
-        ...data,
+        fullName: data.full_name || "",
+        email: data.email || "",
+        departmentOrClass: data.department_or_class,
+        identifier: data.identifier,
+        graduationYear: data.graduation_year,
+        role: data.role,
+        quote: data.quote,
+        cohort: data.cohort,
         photoFile: selectedFile,
       });
 
@@ -163,7 +184,7 @@ const ParticipantSubmitPage = () => {
         </div>
       </header>
 
-      {/* Step indicator (visible during upload and details) */}
+      {/* Step indicator */}
       {(step === "upload" || step === "details") && (
         <div className="mobile-container pt-4">
           <div className="flex gap-2">
@@ -210,15 +231,16 @@ const ParticipantSubmitPage = () => {
 
           {/* Step 2: Enter Details */}
           {step === "details" && previewUrl && (
-            <ParticipantDetailsForm
+            <DynamicParticipantForm
               key="details"
-              requiredFields={requiredFields}
+              schemaConfig={schemaConfig}
               previewUrl={previewUrl}
               onSubmit={handleSubmit}
               onBack={handleBackToUpload}
               isSubmitting={submitMutation.isPending}
               uploadProgress={submitMutation.uploadProgress}
               error={submitMutation.error}
+              departments={departments}
             />
           )}
 
@@ -281,10 +303,10 @@ const ParticipantSubmitPage = () => {
                   {submittedData && (
                     <>
                       <p className="text-sm text-muted-foreground mt-3">
-                        {submittedData.fullName}
+                        {submittedData.full_name}
                       </p>
                       <p className="text-xs text-muted-foreground">
-                        {submittedData.departmentOrClass}
+                        {submittedData.department_or_class || submittedData.cohort}
                       </p>
                     </>
                   )}
