@@ -10,6 +10,7 @@ interface PaymentRequest {
   submissionId: string;
   email: string;
   callbackUrl: string;
+  editToken: string; // Required for authorization
 }
 
 Deno.serve(async (req) => {
@@ -28,7 +29,7 @@ Deno.serve(async (req) => {
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    const { submissionId, email, callbackUrl }: PaymentRequest = await req.json();
+    const { submissionId, email, callbackUrl, editToken }: PaymentRequest = await req.json();
 
     if (!submissionId || !email || !callbackUrl) {
       return new Response(
@@ -37,13 +38,22 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Get submission with album details
+    // Authorization: Require edit token
+    if (!editToken) {
+      return new Response(
+        JSON.stringify({ error: "Authorization required" }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Get submission with album details and verify token
     const { data: submission, error: subError } = await supabase
       .from("submissions")
       .select(`
         id,
         album_id,
         payment_status,
+        edit_token,
         albums!inner(
           id,
           title,
@@ -59,6 +69,14 @@ Deno.serve(async (req) => {
       return new Response(
         JSON.stringify({ error: "Submission not found" }),
         { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Verify the edit token matches
+    if (submission.edit_token !== editToken) {
+      return new Response(
+        JSON.stringify({ error: "Unauthorized" }),
+        { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
