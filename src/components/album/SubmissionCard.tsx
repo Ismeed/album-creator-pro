@@ -30,7 +30,8 @@ import {
   CreditCard,
   Loader2,
   Eye,
-  RefreshCw
+  RefreshCw,
+  Edit3
 } from "lucide-react";
 import type { SubmissionWithParticipant } from "@/hooks/useSubmissions";
 import { useProcessImage, BACKGROUND_COLOR_OPTIONS, type BackgroundColor } from "@/hooks/useImageProcessing";
@@ -156,12 +157,6 @@ export function SubmissionCard({
           <div className="absolute inset-0 bg-foreground/0 group-hover:bg-foreground/20 transition-colors flex items-center justify-center">
             <Eye className="w-5 h-5 text-background opacity-0 group-hover:opacity-100 transition-opacity" />
           </div>
-          {/* Processing indicator */}
-          {!submission.processed_photo_url && (
-            <div className="absolute bottom-0.5 right-0.5 bg-accent/80 rounded px-1 py-0.5">
-              <Loader2 className="w-2.5 h-2.5 text-accent-foreground animate-spin" />
-            </div>
-          )}
         </button>
 
         {/* Info */}
@@ -185,7 +180,12 @@ export function SubmissionCard({
           {/* Status Badges */}
           <div className="flex flex-wrap gap-1.5 mt-2">
             {getApprovalBadge()}
-            {getPaymentBadge()}
+            {(submission as any).is_edited && (
+              <Badge className="bg-accent/10 text-accent border-accent/20">
+                <Edit3 className="w-3 h-3 mr-1" />
+                Edited
+              </Badge>
+            )}
           </div>
         </div>
       </div>
@@ -414,9 +414,8 @@ export function SubmissionDetailSheet({
               </div>
             )}
             {!submission.processed_photo_url && (
-              <p className="text-xs text-center text-muted-foreground flex items-center justify-center gap-1">
-                <Loader2 className="w-3 h-3 animate-spin" />
-                Processing image...
+              <p className="text-xs text-center text-muted-foreground">
+                Original photo (not processed)
               </p>
             )}
           </div>
@@ -467,8 +466,13 @@ export function SubmissionDetailSheet({
             {/* Background Color with Reprocess */}
             <div className="rounded-lg bg-muted/50 p-3 space-y-3">
               <div>
-                <p className="text-xs text-muted-foreground mb-2">Background Color</p>
-                <div className="flex gap-2">
+                <p className="text-xs text-muted-foreground mb-2">Background Processing</p>
+                <p className="text-xs text-muted-foreground mb-3">
+                  {submission.processed_photo_url 
+                    ? "Photo has been processed. Change the background color if needed."
+                    : "Photo is unprocessed. Remove background and select a color to process."}
+                </p>
+                <div className="flex gap-2 mb-3">
                   {BACKGROUND_COLOR_OPTIONS.map((option) => (
                     <button
                       key={option.value}
@@ -496,27 +500,30 @@ export function SubmissionDetailSheet({
                   ))}
                 </div>
               </div>
-              {selectedBgColor !== submission.background_color && (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="w-full"
-                  onClick={handleReprocess}
-                  disabled={processImage.isPending}
-                >
-                  {processImage.isPending ? (
-                    <>
-                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                      Processing...
-                    </>
-                  ) : (
-                    <>
-                      <RefreshCw className="w-4 h-4 mr-2" />
-                      Apply New Background
-                    </>
-                  )}
-                </Button>
-              )}
+              <Button
+                size="sm"
+                variant="outline"
+                className="w-full"
+                onClick={handleReprocess}
+                disabled={processImage.isPending}
+              >
+                {processImage.isPending ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Processing...
+                  </>
+                ) : !submission.processed_photo_url ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 mr-2" />
+                    Remove Background & Apply Color
+                  </>
+                ) : (
+                  <>
+                    <RefreshCw className="w-4 h-4 mr-2" />
+                    Change Background Color
+                  </>
+                )}
+              </Button>
               {processImage.isSuccess && (
                 <p className="text-xs text-success text-center">
                   Background updated! Refreshing...
