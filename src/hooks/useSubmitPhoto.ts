@@ -2,11 +2,9 @@ import { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import type { PublicAlbum } from "@/hooks/usePublicAlbum";
 import type { ParticipantFormData, ParticipantRole } from "@/components/submission/ParticipantDetailsForm";
-import type { BackgroundColor } from "@/hooks/useImageProcessing";
 
-interface SubmissionData extends ParticipantFormData {
+interface SubmissionData extends Omit<ParticipantFormData, 'confirmEmail'> {
   photoFile: File;
-  backgroundColor?: BackgroundColor;
 }
 
 interface SubmissionResult {
@@ -28,9 +26,8 @@ export function useSubmitPhoto(album: PublicAlbum | null) {
       const formData = new FormData();
       formData.append("albumId", album.id);
       formData.append("fullName", data.fullName.trim());
+      formData.append("email", data.email.trim());
       formData.append("photo", data.photoFile);
-      formData.append("backgroundColor", data.backgroundColor || "white");
-      formData.append("paymentMode", album.payment_mode);
 
       // Optional fields
       if (data.departmentOrClass) {
@@ -60,7 +57,6 @@ export function useSubmitPhoto(album: PublicAlbum | null) {
 
       const submitUrl = `${supabaseUrl}/functions/v1/submit-participant`;
       console.log("Submitting to:", submitUrl);
-      console.log("Form data keys:", [...formData.keys()]);
 
       // Send to edge function (handles participant, photo upload, and submission atomically)
       let response: Response;

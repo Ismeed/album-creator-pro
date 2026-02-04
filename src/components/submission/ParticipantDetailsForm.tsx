@@ -1,4 +1,3 @@
-import { useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -25,10 +24,9 @@ import {
   Check,
   Loader2,
   AlertCircle,
-  ArrowLeft
+  ArrowLeft,
+  Mail
 } from "lucide-react";
-import { BackgroundColorPicker } from "@/components/submission/BackgroundColorPicker";
-import type { BackgroundColor } from "@/hooks/useImageProcessing";
 
 // All possible participant fields
 export type ParticipantField = 
@@ -52,12 +50,12 @@ export const PARTICIPANT_ROLES = [
 export type ParticipantRole = typeof PARTICIPANT_ROLES[number]["value"];
 
 // Dynamic schema based on required fields
-const createFormSchema = (requiredFields: ParticipantField[], requiresPayment: boolean) => {
+const createFormSchema = (requiredFields: ParticipantField[]) => {
   return z.object({
     fullName: z.string().trim().min(2, "Name must be at least 2 characters").max(100, "Name is too long"),
-    email: requiresPayment 
-      ? z.string().trim().email("Please enter a valid email")
-      : z.string().trim().email("Please enter a valid email").optional().or(z.literal("")),
+    // Email is always required now for confirmation/edit functionality
+    email: z.string().trim().email("Please enter a valid email address"),
+    confirmEmail: z.string().trim().email("Please confirm your email address"),
     departmentOrClass: requiredFields.includes("department_or_class")
       ? z.string().trim().min(1, "Department/Class is required").max(100, "Too long")
       : z.string().trim().max(100, "Too long").optional(),
@@ -76,12 +74,16 @@ const createFormSchema = (requiredFields: ParticipantField[], requiresPayment: b
     cohort: requiredFields.includes("cohort")
       ? z.string().trim().min(1, "Cohort is required").max(100, "Too long")
       : z.string().trim().max(100, "Too long").optional(),
+  }).refine((data) => data.email === data.confirmEmail, {
+    message: "Email addresses do not match",
+    path: ["confirmEmail"],
   });
 };
 
 export type ParticipantFormData = {
   fullName: string;
-  email?: string;
+  email: string;
+  confirmEmail: string;
   departmentOrClass?: string;
   identifier?: string;
   graduationYear?: string;
@@ -92,11 +94,7 @@ export type ParticipantFormData = {
 
 interface ParticipantDetailsFormProps {
   requiredFields: ParticipantField[];
-  requiresPayment: boolean;
-  pricePerParticipant?: number | null;
   previewUrl: string;
-  backgroundColor: BackgroundColor;
-  onBackgroundColorChange: (color: BackgroundColor) => void;
   onSubmit: (data: ParticipantFormData) => void;
   onBack: () => void;
   isSubmitting: boolean;
@@ -106,18 +104,14 @@ interface ParticipantDetailsFormProps {
 
 export function ParticipantDetailsForm({
   requiredFields,
-  requiresPayment,
-  pricePerParticipant,
   previewUrl,
-  backgroundColor,
-  onBackgroundColorChange,
   onSubmit,
   onBack,
   isSubmitting,
   uploadProgress,
   error,
 }: ParticipantDetailsFormProps) {
-  const formSchema = createFormSchema(requiredFields, requiresPayment);
+  const formSchema = createFormSchema(requiredFields);
   
   const {
     register,
@@ -131,6 +125,7 @@ export function ParticipantDetailsForm({
     defaultValues: {
       fullName: "",
       email: "",
+      confirmEmail: "",
       departmentOrClass: "",
       identifier: "",
       graduationYear: "",
@@ -196,40 +191,68 @@ export function ParticipantDetailsForm({
             )}
           </div>
 
-          {/* Email - Required for payment */}
-          {requiresPayment && (
-            <div className="space-y-2">
-              <Label htmlFor="email">Email Address *</Label>
-              <div className="relative">
-                <svg 
-                  className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground"
-                  fill="none" 
-                  stroke="currentColor" 
-                  viewBox="0 0 24 24"
-                >
-                  <path 
-                    strokeLinecap="round" 
-                    strokeLinejoin="round" 
-                    strokeWidth={2} 
-                    d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" 
-                  />
-                </svg>
-                <Input
-                  id="email"
-                  type="email"
-                  placeholder="your.email@example.com"
-                  {...register("email")}
-                  className="pl-11 h-12"
+          {/* Email - Always required */}
+          <div className="space-y-2">
+            <Label htmlFor="email">Email Address *</Label>
+            <div className="relative">
+              <svg 
+                className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground"
+                fill="none" 
+                stroke="currentColor" 
+                viewBox="0 0 24 24"
+              >
+                <path 
+                  strokeLinecap="round" 
+                  strokeLinejoin="round" 
+                  strokeWidth={2} 
+                  d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" 
                 />
-              </div>
-              {errors.email && (
-                <p className="text-sm text-destructive">{errors.email.message}</p>
-              )}
-              <p className="text-xs text-muted-foreground">
-                Required for payment receipt
-              </p>
+              </svg>
+              <Input
+                id="email"
+                type="email"
+                placeholder="your.email@example.com"
+                {...register("email")}
+                className="pl-11 h-12"
+              />
             </div>
-          )}
+            {errors.email && (
+              <p className="text-sm text-destructive">{errors.email.message}</p>
+            )}
+            <p className="text-xs text-muted-foreground">
+              We'll send a confirmation with an edit link
+            </p>
+          </div>
+
+          {/* Confirm Email */}
+          <div className="space-y-2">
+            <Label htmlFor="confirmEmail">Confirm Email *</Label>
+            <div className="relative">
+              <svg 
+                className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground"
+                fill="none" 
+                stroke="currentColor" 
+                viewBox="0 0 24 24"
+              >
+                <path 
+                  strokeLinecap="round" 
+                  strokeLinejoin="round" 
+                  strokeWidth={2} 
+                  d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" 
+                />
+              </svg>
+              <Input
+                id="confirmEmail"
+                type="email"
+                placeholder="Confirm your email address"
+                {...register("confirmEmail")}
+                className="pl-11 h-12"
+              />
+            </div>
+            {errors.confirmEmail && (
+              <p className="text-sm text-destructive">{errors.confirmEmail.message}</p>
+            )}
+          </div>
 
           {/* Department/Class */}
           <div className="space-y-2">
@@ -353,12 +376,6 @@ export function ParticipantDetailsForm({
           </div>
         </div>
 
-        {/* Background Color Selection */}
-        <BackgroundColorPicker
-          value={backgroundColor}
-          onChange={onBackgroundColorChange}
-        />
-
         {/* Upload Progress */}
         {isSubmitting && (
           <motion.div
@@ -391,15 +408,6 @@ export function ParticipantDetailsForm({
               </div>
             </div>
           </motion.div>
-        )}
-
-        {/* Payment notice */}
-        {requiresPayment && pricePerParticipant && (
-          <div className="p-3 rounded-lg bg-accent/10 border border-accent/20">
-            <p className="text-sm text-foreground">
-              <strong>Note:</strong> After submission, you'll be asked to pay ${pricePerParticipant} to complete your entry.
-            </p>
-          </div>
         )}
 
         <Button 

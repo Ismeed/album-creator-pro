@@ -1,7 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-// CORS headers - explicitly list all allowed headers (wildcard * doesn't work with some browsers)
+// CORS headers
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, accept, origin, x-requested-with",
@@ -13,18 +13,12 @@ serve(async (req) => {
   const url = new URL(req.url);
   console.log(`[submit-participant] ${req.method} ${url.pathname}`);
   
-  // Handle CORS preflight - return 200 with headers (some browsers prefer 200 over 204)
+  // Handle CORS preflight
   if (req.method === "OPTIONS") {
-    console.log("[submit-participant] Handling OPTIONS preflight");
-    return new Response(null, { 
-      status: 200,
-      headers: corsHeaders 
-    });
+    return new Response(null, { status: 200, headers: corsHeaders });
   }
 
-  // Only allow POST
   if (req.method !== "POST") {
-    console.log(`[submit-participant] Method not allowed: ${req.method}`);
     return new Response(
       JSON.stringify({ error: "Method not allowed" }),
       { status: 405, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -35,15 +29,11 @@ serve(async (req) => {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
-    // Create admin client with service role key to bypass RLS
     const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey, {
-      auth: {
-        autoRefreshToken: false,
-        persistSession: false,
-      },
+      auth: { autoRefreshToken: false, persistSession: false },
     });
 
-    // Parse multipart form data - ensure content type is multipart/form-data
+    // Parse multipart form data
     const contentType = req.headers.get("content-type") || "";
     if (!contentType.includes("multipart/form-data")) {
       return new Response(
@@ -56,20 +46,19 @@ serve(async (req) => {
     
     const albumId = formData.get("albumId") as string;
     const fullName = formData.get("fullName") as string;
+    const email = formData.get("email") as string;
     const departmentOrClass = formData.get("departmentOrClass") as string | null;
     const identifier = formData.get("identifier") as string | null;
     const graduationYear = formData.get("graduationYear") as string | null;
     const role = formData.get("role") as string | null;
     const quote = formData.get("quote") as string | null;
     const cohort = formData.get("cohort") as string | null;
-    const backgroundColor = formData.get("backgroundColor") as string || "white";
-    const paymentMode = formData.get("paymentMode") as string || "organizer_pays";
     const photoFile = formData.get("photo") as File | null;
 
     // Validate required fields
-    if (!albumId || !fullName) {
+    if (!albumId || !fullName || !email) {
       return new Response(
-        JSON.stringify({ error: "albumId and fullName are required" }),
+        JSON.stringify({ error: "Album ID, full name, and email are required" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
@@ -77,6 +66,15 @@ serve(async (req) => {
     if (!photoFile) {
       return new Response(
         JSON.stringify({ error: "Photo file is required" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Validate email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      return new Response(
+        JSON.stringify({ error: "Please enter a valid email address" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
@@ -93,7 +91,7 @@ serve(async (req) => {
     // Validate album exists and is open for submissions
     const { data: album, error: albumError } = await supabaseAdmin
       .from("albums")
-      .select("id, is_locked, submission_deadline")
+      .select("id, title, is_locked, is_generated, submission_deadline")
       .eq("id", albumId)
       .single();
 
@@ -107,6 +105,13 @@ serve(async (req) => {
     if (album.is_locked) {
       return new Response(
         JSON.stringify({ error: "This album is locked and no longer accepting submissions" }),
+        { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    if (album.is_generated) {
+      return new Response(
+        JSON.stringify({ error: "This album has already been generated and cannot accept new submissions" }),
         { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
@@ -135,17 +140,17 @@ serve(async (req) => {
       );
     }
 
-    // Validate field lengths to match database constraints
-    if (fullName.length < 2) {
+    // Validate field lengths
+    if (fullName.length < 2 || fullName.length > 100) {
       return new Response(
-        JSON.stringify({ error: "Full name is too short (min 2 characters)" }),
+        JSON.stringify({ error: "Full name must be between 2 and 100 characters" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    if (fullName.length > 100) {
+    if (email.length > 255) {
       return new Response(
-        JSON.stringify({ error: "Full name is too long (max 100 characters)" }),
+        JSON.stringify({ error: "Email is too long (max 255 characters)" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
@@ -160,27 +165,6 @@ serve(async (req) => {
     if (quote && quote.length > 200) {
       return new Response(
         JSON.stringify({ error: "Quote is too long (max 200 characters)" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
-
-    if (cohort && cohort.length > 100) {
-      return new Response(
-        JSON.stringify({ error: "Cohort is too long (max 100 characters)" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
-
-    if (identifier && identifier.length > 50) {
-      return new Response(
-        JSON.stringify({ error: "Identifier is too long (max 50 characters)" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
-
-    if (graduationYear && !/^\d{4}(\/\d{4})?$/.test(graduationYear)) {
-      return new Response(
-        JSON.stringify({ error: "Invalid graduation year format (use YYYY or YYYY/YYYY)" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
@@ -202,11 +186,12 @@ serve(async (req) => {
       );
     }
 
-    // Step 1: Insert participant
+    // Step 1: Insert participant with email
     const { data: participant, error: participantError } = await supabaseAdmin
       .from("participants")
       .insert({
         full_name: fullName.trim(),
+        email: email.trim().toLowerCase(),
         department_or_class: departmentOrClass?.trim() || null,
         identifier: identifier?.trim() || null,
         graduation_year: graduationYear?.trim() || null,
@@ -240,7 +225,6 @@ serve(async (req) => {
 
     if (uploadError) {
       console.error("Error uploading photo:", uploadError);
-      // Clean up participant
       await supabaseAdmin.from("participants").delete().eq("id", participant.id);
       return new Response(
         JSON.stringify({ error: "Failed to upload photo" }),
@@ -248,25 +232,27 @@ serve(async (req) => {
       );
     }
 
-    // Step 3: Create submission record
-    const paymentStatus = paymentMode === "organizer_pays" ? "successful" : "pending";
+    // Step 3: Generate edit token
+    const { data: editTokenData } = await supabaseAdmin.rpc("generate_edit_token");
+    const editToken = editTokenData as string;
 
+    // Step 4: Create submission record (payment always successful since payments are disabled)
     const { data: submission, error: submissionError } = await supabaseAdmin
       .from("submissions")
       .insert({
         album_id: albumId,
         participant_id: participant.id,
         photo_url: fileName,
-        payment_status: paymentStatus,
+        payment_status: "successful", // Payments disabled for testing
         approval_status: "pending",
-        background_color: backgroundColor,
+        edit_token: editToken,
+        is_edited: false,
       })
       .select()
       .single();
 
     if (submissionError) {
       console.error("Error creating submission:", submissionError);
-      // Clean up photo and participant
       await supabaseAdmin.storage.from("photos").remove([fileName]);
       await supabaseAdmin.from("participants").delete().eq("id", participant.id);
       return new Response(
@@ -275,19 +261,22 @@ serve(async (req) => {
       );
     }
 
-    // Step 4: Trigger image processing (fire and forget)
-    const processImageUrl = `${supabaseUrl}/functions/v1/process-image`;
-    fetch(processImageUrl, {
+    // Step 5: Send confirmation email (fire and forget)
+    const sendEmailUrl = `${supabaseUrl}/functions/v1/send-confirmation-email`;
+    fetch(sendEmailUrl, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         "Authorization": `Bearer ${serviceRoleKey}`,
       },
       body: JSON.stringify({
+        email: email.trim().toLowerCase(),
+        participantName: fullName.trim(),
+        albumTitle: album.title,
+        editToken: editToken,
         submissionId: submission.id,
-        backgroundColor: backgroundColor,
       }),
-    }).catch((err) => console.error("Image processing trigger failed:", err));
+    }).catch((err) => console.error("Failed to trigger confirmation email:", err));
 
     return new Response(
       JSON.stringify({
@@ -301,7 +290,7 @@ serve(async (req) => {
   } catch (error) {
     console.error("Unexpected error:", error);
     return new Response(
-      JSON.stringify({ error: "Internal server error" }),
+      JSON.stringify({ error: "Something went wrong. Please try again." }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }

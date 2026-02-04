@@ -67,6 +67,7 @@ export type Database = {
           created_at: string
           id: string
           institution_name: string | null
+          is_generated: boolean
           is_locked: boolean
           organizer_id: string
           payment_mode: Database["public"]["Enums"]["payment_mode"]
@@ -80,6 +81,7 @@ export type Database = {
           created_at?: string
           id?: string
           institution_name?: string | null
+          is_generated?: boolean
           is_locked?: boolean
           organizer_id: string
           payment_mode?: Database["public"]["Enums"]["payment_mode"]
@@ -93,6 +95,7 @@ export type Database = {
           created_at?: string
           id?: string
           institution_name?: string | null
+          is_generated?: boolean
           is_locked?: boolean
           organizer_id?: string
           payment_mode?: Database["public"]["Enums"]["payment_mode"]
@@ -137,6 +140,7 @@ export type Database = {
           cohort: string | null
           created_at: string
           department_or_class: string | null
+          email: string | null
           full_name: string
           graduation_year: string | null
           id: string
@@ -148,6 +152,7 @@ export type Database = {
           cohort?: string | null
           created_at?: string
           department_or_class?: string | null
+          email?: string | null
           full_name: string
           graduation_year?: string | null
           id?: string
@@ -159,6 +164,7 @@ export type Database = {
           cohort?: string | null
           created_at?: string
           department_or_class?: string | null
+          email?: string | null
           full_name?: string
           graduation_year?: string | null
           id?: string
@@ -221,7 +227,9 @@ export type Database = {
           album_id: string
           approval_status: Database["public"]["Enums"]["approval_status"]
           background_color: string | null
+          edit_token: string | null
           id: string
+          is_edited: boolean
           participant_id: string
           payment_status: Database["public"]["Enums"]["payment_status"]
           photo_url: string
@@ -232,7 +240,9 @@ export type Database = {
           album_id: string
           approval_status?: Database["public"]["Enums"]["approval_status"]
           background_color?: string | null
+          edit_token?: string | null
           id?: string
+          is_edited?: boolean
           participant_id: string
           payment_status?: Database["public"]["Enums"]["payment_status"]
           photo_url: string
@@ -243,7 +253,9 @@ export type Database = {
           album_id?: string
           approval_status?: Database["public"]["Enums"]["approval_status"]
           background_color?: string | null
+          edit_token?: string | null
           id?: string
+          is_edited?: boolean
           participant_id?: string
           payment_status?: Database["public"]["Enums"]["payment_status"]
           photo_url?: string
@@ -272,6 +284,7 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      generate_edit_token: { Args: never; Returns: string }
       get_album_id_from_submission: {
         Args: { _submission_id: string }
         Returns: string
@@ -296,6 +309,10 @@ export type Database = {
       }
       is_album_owner: { Args: { _album_id: string }; Returns: boolean }
       is_payment_owner: { Args: { _payment_id: string }; Returns: boolean }
+      is_submission_editable: {
+        Args: { _submission_id: string }
+        Returns: boolean
+      }
       is_submission_owner: {
         Args: { _submission_id: string }
         Returns: boolean
