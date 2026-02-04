@@ -7,16 +7,15 @@ import {
   AlertCircle,
   Lock,
   Clock,
-  Calendar
+  Calendar,
+  Mail
 } from "lucide-react";
 import { usePublicAlbum, useAlbumStatus } from "@/hooks/usePublicAlbum";
 import { useSubmitPhoto } from "@/hooks/useSubmitPhoto";
-import { useInitializePayment } from "@/hooks/usePayment";
 import { PhotoUploader } from "@/components/submission/PhotoUploader";
 import { ParticipantDetailsForm, type ParticipantField, type ParticipantFormData } from "@/components/submission/ParticipantDetailsForm";
-import type { BackgroundColor } from "@/hooks/useImageProcessing";
 
-type SubmissionStep = "upload" | "preview" | "details" | "success";
+type SubmissionStep = "upload" | "details" | "success";
 
 const ParticipantSubmitPage = () => {
   const { albumId } = useParams<{ albumId: string }>();
@@ -27,7 +26,6 @@ const ParticipantSubmitPage = () => {
   // Photo state - persisted across steps
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
-  const [backgroundColor, setBackgroundColor] = useState<BackgroundColor>("white");
   
   // Form data for success display
   const [submittedData, setSubmittedData] = useState<ParticipantFormData | null>(null);
@@ -35,14 +33,11 @@ const ParticipantSubmitPage = () => {
   const { data: album, isLoading: albumLoading, error: albumError } = usePublicAlbum(albumId);
   const albumStatus = useAlbumStatus(album);
   const submitMutation = useSubmitPhoto(album ?? null);
-  const initPayment = useInitializePayment();
 
   // Get required fields from album config (default to basic fields)
   const requiredFields: ParticipantField[] = album?.required_fields 
     ? (album.required_fields as ParticipantField[])
     : ["full_name", "department_or_class"];
-
-  const requiresPayment = album?.payment_mode === "participant_pays" && (album?.price_per_participant || 0) > 0;
 
   // Handle photo selection from uploader
   const handlePhotoSelected = useCallback((file: File, preview: string) => {
@@ -70,27 +65,13 @@ const ParticipantSubmitPage = () => {
     if (!selectedFile || !album) return;
 
     try {
-      const result = await submitMutation.mutateAsync({
+      await submitMutation.mutateAsync({
         ...data,
         photoFile: selectedFile,
-        backgroundColor,
       });
 
       setSubmittedData(data);
-
-      // Check if payment is required
-      if (requiresPayment && album.price_per_participant && album.price_per_participant > 0) {
-        const email = data.email || `${data.fullName.toLowerCase().replace(/\s+/g, '')}@temp.olex.app`;
-        const callbackUrl = `${window.location.origin}/album/${albumId}/payment?submission_id=${result.submissionId}&email=${encodeURIComponent(email)}`;
-        
-        initPayment.mutate({
-          submissionId: result.submissionId,
-          email,
-          callbackUrl,
-        });
-      } else {
-        setStep("success");
-      }
+      setStep("success");
     } catch (error) {
       // Error is handled by the mutation
     }
@@ -232,11 +213,7 @@ const ParticipantSubmitPage = () => {
             <ParticipantDetailsForm
               key="details"
               requiredFields={requiredFields}
-              requiresPayment={requiresPayment}
-              pricePerParticipant={album.price_per_participant}
               previewUrl={previewUrl}
-              backgroundColor={backgroundColor}
-              onBackgroundColorChange={setBackgroundColor}
               onSubmit={handleSubmit}
               onBack={handleBackToUpload}
               isSubmitting={submitMutation.isPending}
@@ -266,17 +243,33 @@ const ParticipantSubmitPage = () => {
                 Photo Submitted!
               </h2>
               <p className="text-muted-foreground max-w-xs mx-auto">
-                {album.payment_mode === "participant_pays" 
-                  ? "Your photo has been submitted. You'll receive payment instructions soon."
-                  : "Thank you! Your photo will appear in the album after review."}
+                Thank you! Your photo will appear in the album after review.
               </p>
+
+              {/* Email confirmation notice */}
+              {submittedData?.email && (
+                <motion.div
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.3 }}
+                  className="mt-6 p-4 rounded-xl bg-success/10 border border-success/20 max-w-xs mx-auto"
+                >
+                  <div className="flex items-center gap-2 text-success">
+                    <Mail className="w-4 h-4" />
+                    <p className="text-sm font-medium">Confirmation Sent</p>
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Check your email at <strong>{submittedData.email}</strong> for a confirmation with an edit link.
+                  </p>
+                </motion.div>
+              )}
 
               {previewUrl && (
                 <motion.div
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.3 }}
-                  className="mt-8"
+                  transition={{ delay: 0.4 }}
+                  className="mt-6"
                 >
                   <div className="aspect-[3/4] max-w-[150px] mx-auto rounded-xl overflow-hidden shadow-card">
                     <img 
@@ -295,22 +288,6 @@ const ParticipantSubmitPage = () => {
                       </p>
                     </>
                   )}
-                </motion.div>
-              )}
-
-              {album.payment_mode === "participant_pays" && (
-                <motion.div
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.5 }}
-                  className="mt-8 p-4 rounded-xl bg-accent/10 border border-accent/20 max-w-xs mx-auto"
-                >
-                  <p className="text-sm font-medium text-foreground">
-                    Payment Required
-                  </p>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    ${album.price_per_participant} per person
-                  </p>
                 </motion.div>
               )}
             </motion.div>
