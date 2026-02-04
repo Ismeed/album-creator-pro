@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Select,
   SelectContent,
@@ -84,13 +85,16 @@ const EditSubmissionPage = () => {
   const { token } = useParams<{ token: string }>();
   const [updateSuccess, setUpdateSuccess] = useState(false);
 
-  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || "https://rlerhmkryfqzfvfuxpvl.supabase.co";
-  const apiKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJsZXJobWtyeWZxemZ2ZnV4cHZsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njk5NjE5NzMsImV4cCI6MjA4NTUzNzk3M30.XsNsWpCZCIeiMnMOtITjuKaWKggt5_C_6J8l2Q1jwzs";
+  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+  const apiKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
 
   // Fetch submission data
   const { data, isLoading, error } = useQuery({
     queryKey: ["edit-submission", token],
     queryFn: async () => {
+      if (!supabaseUrl || !apiKey) {
+        throw new Error("Missing required configuration");
+      }
       const response = await fetch(
         `${supabaseUrl}/functions/v1/get-submission-by-token?token=${encodeURIComponent(token || "")}`,
         {
@@ -105,7 +109,7 @@ const EditSubmissionPage = () => {
 
       return response.json();
     },
-    enabled: !!token,
+    enabled: !!token && !!supabaseUrl && !!apiKey,
   });
 
   const submission: SubmissionData | null = data?.submission || null;
@@ -150,6 +154,9 @@ const EditSubmissionPage = () => {
   // Update mutation
   const updateMutation = useMutation({
     mutationFn: async (formData: FormData) => {
+      if (!supabaseUrl || !apiKey) {
+        throw new Error("Missing required configuration");
+      }
       const response = await fetch(`${supabaseUrl}/functions/v1/update-submission`, {
         method: "POST",
         headers: {
@@ -177,6 +184,25 @@ const EditSubmissionPage = () => {
   const handleSubmit = (formData: FormData) => {
     updateMutation.mutate(formData);
   };
+
+  // Check for missing configuration after all hooks
+  if (!supabaseUrl || !apiKey) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background p-4">
+        <Card className="max-w-md w-full">
+          <CardHeader>
+            <CardTitle className="text-destructive">Configuration Error</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-muted-foreground">
+              Missing required configuration. Please contact support.
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
 
   // Loading state
   if (isLoading) {

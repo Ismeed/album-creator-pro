@@ -60,8 +60,12 @@ export function useSubmitPhoto(album: PublicAlbum | null) {
       setUploadProgress(30);
 
       // Build the edge function URL using environment variables
-      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || "https://rlerhmkryfqzfvfuxpvl.supabase.co";
-      const apiKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJsZXJobWtyeWZxemZ2ZnV4cHZsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njk5NjE5NzMsImV4cCI6MjA4NTUzNzk3M30.XsNsWpCZCIeiMnMOtITjuKaWKggt5_C_6J8l2Q1jwzs";
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+      const apiKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+
+      if (!supabaseUrl || !apiKey) {
+        throw new Error("Missing required configuration. Please contact support.");
+      }
 
       const submitUrl = `${supabaseUrl}/functions/v1/submit-participant`;
       console.log("Submitting to:", submitUrl);
