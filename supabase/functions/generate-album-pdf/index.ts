@@ -393,24 +393,21 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Filter for paid submissions if participant_pays mode
-    let eligibleSubmissions = submissions || [];
-    if (album.payment_mode === "participant_pays") {
-      eligibleSubmissions = eligibleSubmissions.filter(
-        (sub: any) => sub.payment_status === "successful"
-      );
-    }
+    // Filter for approved submissions only (payments disabled for testing)
+    let eligibleSubmissions = submissions?.filter(
+      (sub: any) => sub.approval_status === "approved"
+    ) || [];
 
     if (eligibleSubmissions.length === 0) {
       await supabase
         .from("album_generations")
         .update({ 
           status: "failed", 
-          error_message: "No eligible submissions (must be approved and paid)" 
+          error_message: "No approved submissions found" 
         })
         .eq("id", generationId);
       return new Response(
-        JSON.stringify({ error: "No eligible submissions" }),
+        JSON.stringify({ error: "No approved submissions found" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
@@ -484,6 +481,12 @@ Deno.serve(async (req) => {
         completed_at: new Date().toISOString(),
       })
       .eq("id", generationId);
+
+    // Mark album as generated (prevents further edits)
+    await supabase
+      .from("albums")
+      .update({ is_generated: true })
+      .eq("id", albumId);
 
     return new Response(
       JSON.stringify({

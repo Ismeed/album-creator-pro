@@ -73,7 +73,7 @@ export function useAlbumGeneration(albumId: string | undefined) {
     enabled: !!albumId,
   });
 
-  // Check generation conditions
+  // Check generation conditions (payments disabled for testing)
   const conditionsQuery = useQuery({
     queryKey: ["album-generation-conditions", albumId],
     queryFn: async (): Promise<GenerationConditions> => {
@@ -81,7 +81,7 @@ export function useAlbumGeneration(albumId: string | undefined) {
         return {
           isLocked: false,
           hasApprovedSubmissions: false,
-          allPaymentsSuccessful: false,
+          allPaymentsSuccessful: true, // Always true - payments disabled
           canGenerate: false,
           missingConditions: ["Album not found"],
         };
@@ -98,7 +98,7 @@ export function useAlbumGeneration(albumId: string | undefined) {
         return {
           isLocked: false,
           hasApprovedSubmissions: false,
-          allPaymentsSuccessful: false,
+          allPaymentsSuccessful: true,
           canGenerate: false,
           missingConditions: ["Album not found"],
         };
@@ -107,7 +107,7 @@ export function useAlbumGeneration(albumId: string | undefined) {
       // Fetch submissions
       const { data: submissions } = await supabase
         .from("submissions")
-        .select("approval_status, payment_status")
+        .select("approval_status")
         .eq("album_id", albumId);
 
       const approvedSubmissions = submissions?.filter(
@@ -117,24 +117,18 @@ export function useAlbumGeneration(albumId: string | undefined) {
       const isLocked = album.is_locked;
       const hasApprovedSubmissions = approvedSubmissions.length > 0;
 
-      // Check payments based on mode
-      let allPaymentsSuccessful = true;
-      if (album.payment_mode === "participant_pays") {
-        allPaymentsSuccessful = approvedSubmissions.every(
-          (s) => s.payment_status === "successful"
-        );
-      }
+      // Payments are disabled for testing - always successful
+      const allPaymentsSuccessful = true;
 
       const missingConditions: string[] = [];
       if (!isLocked) missingConditions.push("Album must be locked");
       if (!hasApprovedSubmissions) missingConditions.push("At least one approved submission required");
-      if (!allPaymentsSuccessful) missingConditions.push("All approved submissions must have successful payments");
 
       return {
         isLocked,
         hasApprovedSubmissions,
         allPaymentsSuccessful,
-        canGenerate: isLocked && hasApprovedSubmissions && allPaymentsSuccessful,
+        canGenerate: isLocked && hasApprovedSubmissions,
         missingConditions,
       };
     },
