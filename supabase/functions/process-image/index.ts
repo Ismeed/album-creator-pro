@@ -17,6 +17,7 @@ const BACKGROUND_COLORS: Record<string, string> = {
 interface ProcessRequest {
   submissionId: string;
   backgroundColor?: string; // Key from BACKGROUND_COLORS or hex value
+  editToken: string; // Required for authorization
 }
 
 // Simple in-memory rate limiting (resets on function cold start)
@@ -75,13 +76,21 @@ Deno.serve(async (req) => {
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    const { submissionId, backgroundColor = "white" }: ProcessRequest = await req.json();
+    const { submissionId, backgroundColor = "white", editToken }: ProcessRequest = await req.json();
 
     // Validate submissionId format
     if (!submissionId || !isValidUUID(submissionId)) {
       return new Response(
         JSON.stringify({ error: "Invalid submission ID format" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Authorization: Require edit token
+    if (!editToken) {
+      return new Response(
+        JSON.stringify({ error: "Authorization required" }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
@@ -96,10 +105,10 @@ Deno.serve(async (req) => {
 
     console.log(`Processing submission: ${submissionId}`);
 
-    // Get submission with photo path and check if already processed
+    // Get submission with photo path, check if already processed, and verify token
     const { data: submission, error: subError } = await supabase
       .from("submissions")
-      .select("id, photo_url, album_id, participant_id, processed_photo_url")
+      .select("id, photo_url, album_id, participant_id, processed_photo_url, edit_token")
       .eq("id", submissionId)
       .single();
 
@@ -107,6 +116,14 @@ Deno.serve(async (req) => {
       return new Response(
         JSON.stringify({ error: "Submission not found" }),
         { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Verify the edit token matches
+    if (submission.edit_token !== editToken) {
+      return new Response(
+        JSON.stringify({ error: "Unauthorized" }),
+        { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
