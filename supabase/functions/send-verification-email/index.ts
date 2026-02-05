@@ -1,5 +1,4 @@
-import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
-import { Resend } from "npm:resend@2.0.0";
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -39,15 +38,9 @@ serve(async (req) => {
     const siteUrl = Deno.env.get("SITE_URL") || "https://olexstudio.lovable.app";
     const verifyUrl = `${siteUrl}/verify-email?token=${verificationToken}`;
 
-    const resend = new Resend(resendApiKey);
-
     console.log(`Sending verification email to: ${email}`);
 
-    const emailResponse = await resend.emails.send({
-      from: "Olex Studio <noreply@olexstudio.app>",
-      to: [email],
-      subject: "✅ Verify your Olex Studio account",
-      html: `
+    const emailHtml = `
 <!DOCTYPE html>
 <html>
 <head>
@@ -77,11 +70,30 @@ serve(async (req) => {
     If you didn't create an account with Olex Studio, you can safely ignore this email.
   </p>
 </body>
-</html>
-      `.trim(),
+</html>`.trim();
+
+    const emailResponse = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${resendApiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        from: "Olex Studio <noreply@olexstudio.app>",
+        to: [email],
+        subject: "✅ Verify your Olex Studio account",
+        html: emailHtml,
+      }),
     });
 
-    console.log("Verification email sent successfully:", emailResponse);
+    if (!emailResponse.ok) {
+      const errorText = await emailResponse.text();
+      console.error("Resend API error:", errorText);
+      throw new Error(`Email API error: ${emailResponse.status}`);
+    }
+
+    const result = await emailResponse.json();
+    console.log("Verification email sent successfully:", result);
 
     return new Response(
       JSON.stringify({ 
