@@ -103,6 +103,7 @@ interface DynamicParticipantFormProps {
   uploadProgress: number;
   error: Error | null;
   departments?: string[]; // For faculty albums with department selection
+  customFields?: { id: string; label: string }[]; // Custom fields from album
 }
 
 export function DynamicParticipantForm({
@@ -114,6 +115,7 @@ export function DynamicParticipantForm({
   uploadProgress,
   error,
   departments,
+  customFields = [],
 }: DynamicParticipantFormProps) {
   // Get fields for rendering
   const fields = useMemo(() => {
@@ -131,8 +133,12 @@ export function DynamicParticipantForm({
     for (const field of fields) {
       values[field.id] = "";
     }
+    // Add custom fields
+    for (const cf of customFields) {
+      values[cf.id] = "";
+    }
     return values;
-  }, [fields]);
+  }, [fields, customFields]);
 
   const {
     register,
@@ -325,6 +331,26 @@ export function DynamicParticipantForm({
               )}
             </div>
           ))}
+          
+          {/* Custom Fields */}
+          {customFields.length > 0 && (
+            <div className="border-t border-border pt-4 space-y-4">
+              <p className="text-xs text-muted-foreground">Additional Information</p>
+              {customFields.map((cf) => (
+                <div key={cf.id} className="space-y-2">
+                  <Label htmlFor={cf.id}>{cf.label}</Label>
+                  <Input
+                    id={cf.id}
+                    type="text"
+                    placeholder={`Enter ${cf.label.toLowerCase()}`}
+                    {...register(cf.id)}
+                    maxLength={100}
+                    className="h-12"
+                  />
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Upload Progress */}

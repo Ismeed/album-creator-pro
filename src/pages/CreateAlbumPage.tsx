@@ -21,17 +21,21 @@ import {
   Check, 
   Loader2, 
   Building2,
-  Settings2
+  Settings2,
+  Layout
 } from "lucide-react";
 import { useCreateAlbum } from "@/hooks/useAlbums";
 import { useToast } from "@/hooks/use-toast";
 import { SchemaConfigurator } from "@/components/album/SchemaConfigurator";
+import { TemplateSelector } from "@/components/album/TemplateSelector";
+import { CustomFieldsEditor } from "@/components/album/CustomFieldsEditor";
 import {
   type AlbumCategory,
   type StoredSchemaConfig,
   ALBUM_CATEGORIES,
   createDefaultSchemaConfig,
 } from "@/types/field-schemas";
+import { type CustomField } from "@/types/album-templates";
 import type { Database } from "@/integrations/supabase/types";
 
 type PaymentMode = Database["public"]["Enums"]["payment_mode"];
@@ -60,11 +64,17 @@ const CreateAlbumPage = () => {
   const [step, setStep] = useState(1);
   const createAlbum = useCreateAlbum();
   
+  // Template selection state
+  const [selectedTemplateId, setSelectedTemplateId] = useState("classic");
+  
   // Schema configuration state
   const [schemaConfig, setSchemaConfig] = useState<StoredSchemaConfig>(
     createDefaultSchemaConfig("class")
   );
   const [departments, setDepartments] = useState<string[]>([]);
+  
+  // Custom fields state (max 3)
+  const [customFields, setCustomFields] = useState<CustomField[]>([]);
 
   const {
     register,
@@ -97,13 +107,16 @@ const CreateAlbumPage = () => {
   };
 
   const onSubmit = async (data: FormData) => {
-    if (step < 3) {
+    if (step < 4) {
       if (step === 1) {
         const isValid = await trigger(["title", "institution_name", "album_type"]);
         if (isValid) {
           setStep(2);
         }
       } else if (step === 2) {
+        // Template selection - always proceed
+        setStep(3);
+      } else if (step === 3) {
         // Validate faculty has at least one department
         if (data.album_type === "faculty" && departments.length === 0) {
           toast({
@@ -113,7 +126,7 @@ const CreateAlbumPage = () => {
           });
           return;
         }
-        setStep(3);
+        setStep(4);
       }
       return;
     }
@@ -123,6 +136,7 @@ const CreateAlbumPage = () => {
       const finalConfig: StoredSchemaConfig = {
         ...schemaConfig,
         ...(departments.length > 0 && { departments }),
+        ...(customFields.length > 0 && { customFields: customFields.map(f => ({ label: f.label, required: false })) }),
       };
 
       const album = await createAlbum.mutateAsync({
@@ -133,7 +147,10 @@ const CreateAlbumPage = () => {
         price_per_participant: null,
         submission_deadline: data.submission_deadline || null,
         required_fields: finalConfig as unknown as Database["public"]["Tables"]["albums"]["Insert"]["required_fields"],
-      });
+        // @ts-ignore - template_id and custom_fields added via migration
+        template_id: selectedTemplateId,
+        custom_fields: customFields.length > 0 ? customFields.map(f => ({ id: f.id, label: f.label })) : null,
+      } as any);
 
       toast({
         title: "Album created!",
@@ -157,7 +174,8 @@ const CreateAlbumPage = () => {
   };
 
   const canProceedStep1 = formValues.title.length > 0 && formValues.institution_name.length > 0;
-  const canProceedStep2 = albumType !== "faculty" || departments.length > 0;
+  const canProceedStep2 = true; // Template selection is always valid once selected
+  const canProceedStep3 = albumType !== "faculty" || departments.length > 0;
 
   const selectedCategory = ALBUM_CATEGORIES.find(c => c.value === albumType);
 
@@ -179,7 +197,7 @@ const CreateAlbumPage = () => {
       {/* Progress */}
       <div className="mobile-container py-4">
         <div className="flex gap-2">
-          {[1, 2, 3].map((s) => (
+          {[1, 2, 3, 4].map((s) => (
             <div
               key={s}
               className={`h-1 flex-1 rounded-full transition-colors ${
@@ -189,7 +207,12 @@ const CreateAlbumPage = () => {
           ))}
         </div>
         <p className="text-xs text-muted-foreground mt-2">
-          Step {step} of 3: {step === 1 ? "Basic Info" : step === 2 ? "Field Configuration" : "Deadline & Review"}
+          Step {step} of 4: {
+            step === 1 ? "Basic Info" : 
+            step === 2 ? "Template Selection" :
+            step === 3 ? "Field Configuration" : 
+            "Deadline & Review"
+          }
         </p>
       </div>
 
@@ -276,10 +299,44 @@ const CreateAlbumPage = () => {
           </motion.div>
         )}
 
-        {/* Step 2: Schema Configuration */}
+        {/* Step 2: Template Selection */}
         {step === 2 && (
           <motion.div
             key="step2"
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -20 }}
+            className="space-y-6"
+          >
+            <div className="text-center mb-8">
+              <div className="w-16 h-16 rounded-2xl accent-gradient flex items-center justify-center mx-auto mb-4">
+                <Layout className="w-8 h-8 text-accent-foreground" />
+              </div>
+              <h2 className="text-xl font-bold text-foreground">
+                Choose Template
+              </h2>
+              <p className="text-sm text-muted-foreground mt-1">
+                Select an album design template
+              </p>
+            </div>
+
+            <TemplateSelector
+              selectedTemplateId={selectedTemplateId}
+              onSelect={setSelectedTemplateId}
+            />
+
+            <div className="rounded-lg bg-muted/50 p-3">
+              <p className="text-xs text-muted-foreground">
+                <strong>Note:</strong> Template cannot be changed after participants start submitting.
+              </p>
+            </div>
+          </motion.div>
+        )}
+
+        {/* Step 3: Schema Configuration */}
+        {step === 3 && (
+          <motion.div
+            key="step3"
             initial={{ opacity: 0, x: 20 }}
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: -20 }}
@@ -304,13 +361,21 @@ const CreateAlbumPage = () => {
               departments={departments}
               onDepartmentsChange={albumType === "faculty" ? setDepartments : undefined}
             />
+
+            {/* Custom Fields Section */}
+            <div className="border-t border-border pt-6">
+              <CustomFieldsEditor
+                customFields={customFields}
+                onChange={setCustomFields}
+              />
+            </div>
           </motion.div>
         )}
 
-        {/* Step 3: Deadline & Review */}
-        {step === 3 && (
+        {/* Step 4: Deadline & Review */}
+        {step === 4 && (
           <motion.div
-            key="step3"
+            key="step4"
             initial={{ opacity: 0, x: 20 }}
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: -20 }}
@@ -372,6 +437,12 @@ const CreateAlbumPage = () => {
                   </span>
                 </div>
                 <div className="flex justify-between">
+                  <span className="text-muted-foreground">Template</span>
+                  <span className="font-medium text-foreground capitalize">
+                    {selectedTemplateId}
+                  </span>
+                </div>
+                <div className="flex justify-between">
                   <span className="text-muted-foreground">Schema</span>
                   <span className="font-medium text-foreground">
                     Type {schemaConfig.schemaType}
@@ -383,6 +454,14 @@ const CreateAlbumPage = () => {
                     {schemaConfig.fields.filter(f => f.required).length} required, {schemaConfig.fields.filter(f => !f.required).length} optional
                   </span>
                 </div>
+                {customFields.length > 0 && (
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Custom Fields</span>
+                    <span className="font-medium text-foreground">
+                      {customFields.length} defined
+                    </span>
+                  </div>
+                )}
                 {departments.length > 0 && (
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Departments</span>
@@ -422,6 +501,7 @@ const CreateAlbumPage = () => {
             disabled={
               (step === 1 && !canProceedStep1) || 
               (step === 2 && !canProceedStep2) ||
+              (step === 3 && !canProceedStep3) ||
               createAlbum.isPending
             }
           >
@@ -430,7 +510,7 @@ const CreateAlbumPage = () => {
                 <Loader2 className="w-5 h-5 mr-2 animate-spin" />
                 Creating...
               </>
-            ) : step === 3 ? (
+            ) : step === 4 ? (
               <>
                 <Check className="w-5 h-5 mr-2" />
                 Create Album
