@@ -65,7 +65,7 @@ const CreateAlbumPage = () => {
   const createAlbum = useCreateAlbum();
   
   // Template selection state
-  const [selectedTemplateId, setSelectedTemplateId] = useState("classic");
+  const [selectedTemplateId, setSelectedTemplateId] = useState("foundation");
   
   // Schema configuration state
   const [schemaConfig, setSchemaConfig] = useState<StoredSchemaConfig>(

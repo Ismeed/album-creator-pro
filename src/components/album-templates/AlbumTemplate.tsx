@@ -1,6 +1,9 @@
-import type { AlbumTemplateData } from "@/types/album-templates";
-import { CoverPage } from "./CoverPage";
-import { ParticipantGrid } from "./ParticipantGrid";
+import type { AlbumTemplateData, TemplateVariant } from "@/types/album-templates";
+import { FoundationCover, FoundationGrid } from "./templates/FoundationTemplate";
+import { ClassicGridCover, ClassicGridPage } from "./templates/ClassicGridTemplate";
+import { ElevateCover, ElevateGrid } from "./templates/ElevateTemplate";
+import { MomentumCover, MomentumGrid } from "./templates/MomentumTemplate";
+import { SignatureCover, SignatureGrid } from "./templates/SignatureTemplate";
 
 interface AlbumTemplateProps {
   data: AlbumTemplateData;
@@ -8,7 +11,62 @@ interface AlbumTemplateProps {
 }
 
 export function AlbumTemplate({ data, showWatermark = false }: AlbumTemplateProps) {
-  const variant = data.templateId === "modern" ? "modern" : "classic";
+  const templateId = data.templateId as TemplateVariant;
+
+  const renderCover = () => {
+    const coverProps = {
+      title: data.cover.title,
+      institutionName: data.cover.institutionName,
+      albumType: data.cover.albumType,
+      year: data.cover.year,
+      logoUrl: data.cover.logoUrl,
+    };
+
+    switch (templateId) {
+      case "classic-grid":
+        return <ClassicGridCover {...coverProps} />;
+      case "elevate":
+        return <ElevateCover {...coverProps} />;
+      case "momentum":
+        return <MomentumCover {...coverProps} />;
+      case "signature":
+        return <SignatureCover {...coverProps} />;
+      case "foundation":
+      default:
+        return <FoundationCover {...coverProps} />;
+    }
+  };
+
+  const renderParticipants = () => {
+    if (data.participants.length === 0) {
+      return (
+        <div className="album-page flex items-center justify-center min-h-[297mm] bg-background">
+          <p className="text-muted-foreground text-lg">
+            No approved participants to display
+          </p>
+        </div>
+      );
+    }
+
+    const gridProps = {
+      participants: data.participants,
+      schemaConfig: data.schemaConfig,
+    };
+
+    switch (templateId) {
+      case "classic-grid":
+        return <ClassicGridPage {...gridProps} />;
+      case "elevate":
+        return <ElevateGrid {...gridProps} />;
+      case "momentum":
+        return <MomentumGrid {...gridProps} />;
+      case "signature":
+        return <SignatureGrid {...gridProps} />;
+      case "foundation":
+      default:
+        return <FoundationGrid {...gridProps} />;
+    }
+  };
 
   return (
     <div className="album-container bg-background text-foreground relative">
@@ -37,24 +95,10 @@ export function AlbumTemplate({ data, showWatermark = false }: AlbumTemplateProp
       `}</style>
 
       {/* Cover Page */}
-      <CoverPage data={data.cover} variant={variant} />
+      {renderCover()}
 
       {/* Participant Pages */}
-      {data.participants.length > 0 ? (
-        <ParticipantGrid
-          participants={data.participants}
-          variant={variant}
-          columnsPerPage={variant === "modern" ? 3 : 4}
-          rowsPerPage={3}
-          schemaConfig={data.schemaConfig}
-        />
-      ) : (
-        <div className="album-page flex items-center justify-center min-h-[297mm] bg-background">
-          <p className="text-muted-foreground text-lg">
-            No approved participants to display
-          </p>
-        </div>
-      )}
+      {renderParticipants()}
 
       {/* Preview watermark */}
       {showWatermark && (
