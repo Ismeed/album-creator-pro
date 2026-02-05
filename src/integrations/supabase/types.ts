@@ -192,6 +192,41 @@ export type Database = {
         }
         Relationships: []
       }
+      password_reset_tokens: {
+        Row: {
+          created_at: string
+          expires_at: string
+          id: string
+          organizer_id: string
+          token_hash: string
+          used_at: string | null
+        }
+        Insert: {
+          created_at?: string
+          expires_at: string
+          id?: string
+          organizer_id: string
+          token_hash: string
+          used_at?: string | null
+        }
+        Update: {
+          created_at?: string
+          expires_at?: string
+          id?: string
+          organizer_id?: string
+          token_hash?: string
+          used_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "password_reset_tokens_organizer_id_fkey"
+            columns: ["organizer_id"]
+            isOneToOne: false
+            referencedRelation: "organizers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       payments: {
         Row: {
           album_id: string
@@ -306,6 +341,7 @@ export type Database = {
     }
     Functions: {
       generate_edit_token: { Args: never; Returns: string }
+      generate_password_reset_token: { Args: never; Returns: string }
       generate_verification_token: { Args: never; Returns: string }
       get_album_id_from_submission: {
         Args: { _submission_id: string }
@@ -327,6 +363,7 @@ export type Database = {
           title: string
         }[]
       }
+      hash_token: { Args: { token: string }; Returns: string }
       is_album_open_for_submission: {
         Args: { _album_id: string }
         Returns: boolean

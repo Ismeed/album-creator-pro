@@ -15,6 +15,8 @@ import ParticipantPaymentPage from "./pages/ParticipantPaymentPage";
 import AlbumPreviewPage from "./pages/AlbumPreviewPage";
 import EditSubmissionPage from "./pages/EditSubmissionPage";
 import VerifyEmailPage from "./pages/VerifyEmailPage";
+import ForgotPasswordPage from "./pages/ForgotPasswordPage";
+import ResetPasswordPage from "./pages/ResetPasswordPage";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -41,6 +43,22 @@ const App = () => (
               element={
                 <PublicOnlyRoute>
                   <LoginPage />
+                </PublicOnlyRoute>
+              }
+            />
+            <Route
+              path="/forgot-password"
+              element={
+                <PublicOnlyRoute>
+                  <ForgotPasswordPage />
+                </PublicOnlyRoute>
+              }
+            />
+            <Route
+              path="/reset-password/:token"
+              element={
+                <PublicOnlyRoute>
+                  <ResetPasswordPage />
                 </PublicOnlyRoute>
               }
             />
