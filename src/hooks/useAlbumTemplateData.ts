@@ -13,7 +13,7 @@ interface UseAlbumTemplateDataResult {
 
 export function useAlbumTemplateData(
   albumId: string | undefined,
-  templateId: string = "classic"
+  templateId: string = "foundation"
 ): UseAlbumTemplateDataResult {
   const {
     data: album,

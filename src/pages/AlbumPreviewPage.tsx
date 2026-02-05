@@ -35,7 +35,7 @@ import { useToast } from "@/hooks/use-toast";
 export default function AlbumPreviewPage() {
   const { albumId } = useParams<{ albumId: string }>();
   const { toast } = useToast();
-  const [selectedTemplate, setSelectedTemplate] = useState("classic");
+  const [selectedTemplate, setSelectedTemplate] = useState("foundation");
   const [previewMode, setPreviewMode] = useState<"full" | "pages">("full");
   const [isDownloading, setIsDownloading] = useState(false);
 

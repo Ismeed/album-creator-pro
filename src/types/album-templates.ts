@@ -14,36 +14,39 @@ export interface AlbumTemplateConfig {
   previewImage?: string;
 }
 
+// Template variant type for rendering
+export type TemplateVariant = "foundation" | "classic-grid" | "elevate" | "momentum" | "signature";
+
 // Available templates - 5 total (2 basic, 3 premium)
 export const ALBUM_TEMPLATES: AlbumTemplateConfig[] = [
   {
-    id: "classic",
-    name: "Classic",
-    description: "Clean, professional layout with centered photos and elegant typography",
+    id: "foundation",
+    name: "Foundation",
+    description: "Minimal layout with centered portraits and clean typography. Best for small classes.",
     tier: "basic",
   },
   {
-    id: "minimal",
-    name: "Minimal",
-    description: "Simple, distraction-free design with focus on photos",
+    id: "classic-grid",
+    name: "Classic Grid",
+    description: "Grid-based layout with compact photo cards. Optimized for large participant counts.",
     tier: "basic",
   },
   {
-    id: "modern",
-    name: "Modern Grid",
-    description: "Contemporary design with grid-based layout and bold headers",
+    id: "elevate",
+    name: "Elevate",
+    description: "Modern card-based layout with larger photos, elegant spacing and hierarchy.",
     tier: "premium",
   },
   {
-    id: "elegant",
-    name: "Elegant",
-    description: "Sophisticated design with ornate borders and decorative elements",
+    id: "momentum",
+    name: "Momentum",
+    description: "Bold header section with accent color highlights. Contemporary, energetic layout.",
     tier: "premium",
   },
   {
-    id: "vibrant",
-    name: "Vibrant",
-    description: "Colorful, dynamic layout with gradient accents and playful styling",
+    id: "signature",
+    name: "Signature",
+    description: "Full-width photo emphasis with yearbook-style presentation. Flagship premium design.",
     tier: "premium",
   },
 ];
