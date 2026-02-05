@@ -1,4 +1,5 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
+import { Resend } from "npm:resend@2.0.0";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -19,6 +20,8 @@ serve(async (req) => {
   }
 
   try {
+    const resendApiKey = Deno.env.get("RESEND_API_KEY");
+    
     const { email, participantName, albumTitle, editToken, submissionId }: EmailRequest = await req.json();
 
     if (!email || !participantName || !albumTitle || !editToken || !submissionId) {
@@ -28,42 +31,84 @@ serve(async (req) => {
       );
     }
 
-    // Build edit URL
     const siteUrl = Deno.env.get("SITE_URL") || "https://olexstudio.lovable.app";
     const editUrl = `${siteUrl}/edit-submission/${editToken}`;
 
-    // MVP: Log email content instead of sending
-    // TODO: Integrate with Resend for production
-    console.log("=".repeat(60));
-    console.log("CONFIRMATION EMAIL (MVP - NOT ACTUALLY SENT)");
-    console.log("=".repeat(60));
-    console.log(`To: ${email}`);
-    console.log(`Subject: Your submission to "${albumTitle}" is confirmed!`);
-    console.log("-".repeat(60));
-    console.log(`
-Dear ${participantName},
+    // If Resend is not configured, log the email (fallback for development)
+    if (!resendApiKey) {
+      console.log("=".repeat(60));
+      console.log("CONFIRMATION EMAIL (Resend not configured)");
+      console.log("=".repeat(60));
+      console.log(`To: ${email}`);
+      console.log(`Subject: ✅ Olex Studio – Submission Successful`);
+      console.log(`Edit URL: ${editUrl}`);
+      console.log("=".repeat(60));
 
-Thank you for submitting your photo to "${albumTitle}"!
+      return new Response(
+        JSON.stringify({ 
+          success: true, 
+          message: "Email logged (Resend not configured)",
+          editUrl,
+        }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
 
-Your submission has been received and is pending review by the organizer.
+    const resend = new Resend(resendApiKey);
 
-If you need to make changes to your submission, you can use this link:
-${editUrl}
+    console.log(`Sending confirmation email to: ${email}`);
 
-Please note: You can only edit your submission while the album is still open for submissions.
+    const emailResponse = await resend.emails.send({
+      from: "Olex Studio <noreply@olexstudio.app>",
+      to: [email],
+      subject: "✅ Olex Studio – Submission Successful",
+      html: `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
+  <div style="text-align: center; margin-bottom: 30px;">
+    <h1 style="color: #E53E3E; margin: 0; font-size: 28px;">OLEX</h1>
+    <p style="color: #666; margin: 5px 0 0 0; font-size: 14px;">Photo Album Studio</p>
+  </div>
+  
+  <h2 style="color: #1a1a1a; margin-bottom: 20px;">Hi ${participantName},</h2>
+  
+  <p>Your submission to <strong>"${albumTitle}"</strong> was successful! 🎉</p>
+  
+  <p>You can edit your response using the link below:</p>
+  
+  <div style="text-align: center; margin: 30px 0;">
+    <a href="${editUrl}" style="display: inline-block; background-color: #E53E3E; color: white; padding: 14px 30px; text-decoration: none; border-radius: 8px; font-weight: 600;">Edit Your Submission</a>
+  </div>
+  
+  <div style="background: #f5f5f5; padding: 16px; border-radius: 8px; margin: 20px 0;">
+    <p style="margin: 0 0 8px 0; font-weight: 600; color: #1a1a1a;">📝 Note:</p>
+    <ul style="margin: 0; padding-left: 20px; color: #666;">
+      <li>Editing is available only before the submission deadline</li>
+      <li>Editing will be disabled once the album is generated</li>
+    </ul>
+  </div>
+  
+  <hr style="border: none; border-top: 1px solid #eee; margin: 30px 0;">
+  
+  <p style="color: #999; font-size: 12px; text-align: center;">
+    — Olex Studio
+  </p>
+</body>
+</html>
+      `.trim(),
+    });
 
-Best regards,
-Olex Studio Team
-    `.trim());
-    console.log("=".repeat(60));
-    console.log(`Edit Token: ${editToken}`);
-    console.log(`Submission ID: ${submissionId}`);
-    console.log("=".repeat(60));
+    console.log("Confirmation email sent successfully:", emailResponse);
 
     return new Response(
       JSON.stringify({ 
         success: true, 
-        message: "Email logged (MVP mode - not actually sent)",
+        message: "Confirmation email sent",
         editUrl,
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -71,7 +116,7 @@ Olex Studio Team
   } catch (error) {
     console.error("Email error:", error);
     return new Response(
-      JSON.stringify({ error: "Failed to process email" }),
+      JSON.stringify({ error: "Failed to send email" }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }

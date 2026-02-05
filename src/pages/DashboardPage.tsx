@@ -5,10 +5,13 @@ import { Plus, Loader2 } from "lucide-react";
 import { DashboardHeader } from "@/components/dashboard/DashboardHeader";
 import { AlbumCard } from "@/components/dashboard/AlbumCard";
 import { EmptyAlbumsState } from "@/components/dashboard/EmptyAlbumsState";
+import { EmailVerificationBanner } from "@/components/dashboard/EmailVerificationBanner";
 import { useAlbums } from "@/hooks/useAlbums";
+import { useOrganizerProfile } from "@/hooks/useOrganizerProfile";
 
 const DashboardPage = () => {
   const { data: albums = [], isLoading, error } = useAlbums();
+  const { data: organizer } = useOrganizerProfile();
 
   return (
     <main className="min-h-[100dvh] bg-background safe-top safe-bottom">
@@ -16,6 +19,14 @@ const DashboardPage = () => {
 
       {/* Content */}
       <div className="mobile-container py-6">
+        {/* Email Verification Banner */}
+        {organizer && !organizer.is_verified && (
+          <EmailVerificationBanner 
+            email={organizer.email} 
+            fullName={organizer.full_name} 
+          />
+        )}
+
         {/* Welcome */}
         <motion.div
           initial={{ opacity: 0, y: 10 }}

@@ -14,6 +14,7 @@ import ParticipantSubmitPage from "./pages/ParticipantSubmitPage";
 import ParticipantPaymentPage from "./pages/ParticipantPaymentPage";
 import AlbumPreviewPage from "./pages/AlbumPreviewPage";
 import EditSubmissionPage from "./pages/EditSubmissionPage";
+import VerifyEmailPage from "./pages/VerifyEmailPage";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -31,6 +32,7 @@ const App = () => (
             <Route path="/submit/:albumId" element={<ParticipantSubmitPage />} />
             <Route path="/edit-submission/:token" element={<EditSubmissionPage />} />
             <Route path="/album/:albumId/payment" element={<ParticipantPaymentPage />} />
+            <Route path="/verify-email" element={<VerifyEmailPage />} />
             <Route path="/demo" element={<ParticipantSubmitPage />} />
             
             {/* Auth routes (redirect if logged in) */}
