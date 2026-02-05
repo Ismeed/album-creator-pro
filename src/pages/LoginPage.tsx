@@ -208,9 +208,29 @@ const SignupForm = () => {
       return;
     }
 
+    // Send verification email via edge function
+    try {
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+      const apiKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+      
+      if (supabaseUrl && apiKey) {
+        // Trigger verification email (fire and forget - don't block signup)
+        fetch(`${supabaseUrl}/functions/v1/resend-verification-email`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            apikey: apiKey,
+          },
+          body: JSON.stringify({ email: data.email }),
+        }).catch(console.error);
+      }
+    } catch (err) {
+      console.error("Failed to trigger verification email:", err);
+    }
+
     toast({
       title: "Account created!",
-      description: "You can now start creating albums.",
+      description: "Please check your email to verify your account.",
     });
     navigate("/dashboard", { replace: true });
   };

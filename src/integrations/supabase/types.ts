@@ -126,18 +126,27 @@ export type Database = {
           email: string
           full_name: string
           id: string
+          is_verified: boolean
+          verification_token: string | null
+          verified_at: string | null
         }
         Insert: {
           created_at?: string
           email: string
           full_name: string
           id: string
+          is_verified?: boolean
+          verification_token?: string | null
+          verified_at?: string | null
         }
         Update: {
           created_at?: string
           email?: string
           full_name?: string
           id?: string
+          is_verified?: boolean
+          verification_token?: string | null
+          verified_at?: string | null
         }
         Relationships: []
       }
@@ -244,6 +253,7 @@ export type Database = {
           photo_url: string
           processed_photo_url: string | null
           submitted_at: string
+          updated_at: string | null
         }
         Insert: {
           album_id: string
@@ -257,6 +267,7 @@ export type Database = {
           photo_url: string
           processed_photo_url?: string | null
           submitted_at?: string
+          updated_at?: string | null
         }
         Update: {
           album_id?: string
@@ -270,6 +281,7 @@ export type Database = {
           photo_url?: string
           processed_photo_url?: string | null
           submitted_at?: string
+          updated_at?: string | null
         }
         Relationships: [
           {
@@ -294,6 +306,7 @@ export type Database = {
     }
     Functions: {
       generate_edit_token: { Args: never; Returns: string }
+      generate_verification_token: { Args: never; Returns: string }
       get_album_id_from_submission: {
         Args: { _submission_id: string }
         Returns: string

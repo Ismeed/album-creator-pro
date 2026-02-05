@@ -187,6 +187,13 @@ export function SubmissionCard({
               </Badge>
             )}
           </div>
+          
+          {/* Show last edit time if edited */}
+          {(submission as any).is_edited && (submission as any).updated_at && (
+            <p className="text-xs text-accent/80 mt-1">
+              Last edit: {new Date((submission as any).updated_at).toLocaleString()}
+            </p>
+          )}
         </div>
       </div>
 
