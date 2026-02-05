@@ -12,7 +12,12 @@ interface ParticipantData {
   fullName: string;
   departmentOrClass?: string;
   identifier?: string;
+  graduationYear?: string;
+  role?: string;
+  quote?: string;
+  cohort?: string;
   photoUrl: string;
+  customFieldValues?: Record<string, string>;
 }
 
 interface AlbumData {
@@ -21,6 +26,8 @@ interface AlbumData {
   institutionName?: string;
   albumType: string;
   year: string;
+  templateId: string;
+  customFields?: { id: string; label: string }[];
 }
 
 const ALBUM_TYPE_LABELS: Record<string, string> = {
@@ -419,17 +426,31 @@ Deno.serve(async (req) => {
       return nameA.localeCompare(nameB);
     });
 
-    // Transform to participant data
+    // Transform to participant data with all fields
     const participants: ParticipantData[] = eligibleSubmissions.map((sub: any) => ({
       id: sub.id,
       fullName: sub.participant?.full_name || "Unknown",
       departmentOrClass: sub.participant?.department_or_class || undefined,
       identifier: sub.participant?.identifier || undefined,
+      graduationYear: sub.participant?.graduation_year || undefined,
+      role: sub.participant?.role || undefined,
+      quote: sub.participant?.quote || undefined,
+      cohort: sub.participant?.cohort || undefined,
       photoUrl: sub.processed_photo_url || sub.photo_url,
+      customFieldValues: sub.participant?.custom_field_values || undefined,
     }));
+
+    // Parse custom fields from album
+    let customFields: { id: string; label: string }[] = [];
+    if (album.custom_fields && Array.isArray(album.custom_fields)) {
+      customFields = album.custom_fields.filter((f: any) => f?.id && f?.label);
+    }
 
     // Create PDF
     const pdfDoc = await PDFDocument.create();
+
+    // Use template from album (with fallback)
+    const effectiveTemplateId = album.template_id || templateId || "classic";
 
     const albumData: AlbumData = {
       id: album.id,
@@ -437,6 +458,8 @@ Deno.serve(async (req) => {
       institutionName: album.institution_name || undefined,
       albumType: album.album_type,
       year: new Date().getFullYear().toString(),
+      templateId: effectiveTemplateId,
+      customFields: customFields.length > 0 ? customFields : undefined,
     };
 
     // Create cover page

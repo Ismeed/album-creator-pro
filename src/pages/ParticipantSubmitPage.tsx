@@ -55,6 +55,17 @@ const ParticipantSubmitPage = () => {
     return parsed?.departments;
   }, [album?.required_fields]);
 
+  // Get custom fields from album
+  const customFields = useMemo(() => {
+    // @ts-ignore - custom_fields added via migration
+    const rawFields = album?.custom_fields;
+    if (!rawFields || !Array.isArray(rawFields)) return [];
+    return rawFields.filter((f: any) => f?.id && f?.label).map((f: any) => ({
+      id: f.id as string,
+      label: f.label as string,
+    }));
+  }, [album]);
+
   // Handle photo selection from uploader
   const handlePhotoSelected = useCallback((file: File, preview: string) => {
     setSelectedFile(file);
@@ -79,6 +90,15 @@ const ParticipantSubmitPage = () => {
     if (!selectedFile || !album) return;
 
     try {
+      // Extract custom field values
+      const customFieldValues: Record<string, string> = {};
+      for (const cf of customFields) {
+        const value = data[cf.id];
+        if (value && typeof value === "string" && value.trim()) {
+          customFieldValues[cf.id] = value.trim();
+        }
+      }
+
       await submitMutation.mutateAsync({
         fullName: data.full_name || "",
         email: data.email || "",
@@ -89,6 +109,7 @@ const ParticipantSubmitPage = () => {
         quote: data.quote,
         cohort: data.cohort,
         photoFile: selectedFile,
+        customFieldValues: Object.keys(customFieldValues).length > 0 ? customFieldValues : undefined,
       });
 
       setSubmittedData(data);
@@ -241,6 +262,7 @@ const ParticipantSubmitPage = () => {
               uploadProgress={submitMutation.uploadProgress}
               error={submitMutation.error}
               departments={departments}
+              customFields={customFields}
             />
           )}
 

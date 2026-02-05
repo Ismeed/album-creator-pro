@@ -54,6 +54,17 @@ serve(async (req) => {
     const quote = formData.get("quote") as string | null;
     const cohort = formData.get("cohort") as string | null;
     const photoFile = formData.get("photo") as File | null;
+    const customFieldValuesRaw = formData.get("customFieldValues") as string | null;
+    
+    // Parse custom field values
+    let customFieldValues: Record<string, string> | null = null;
+    if (customFieldValuesRaw) {
+      try {
+        customFieldValues = JSON.parse(customFieldValuesRaw);
+      } catch {
+        // Invalid JSON, ignore
+      }
+    }
 
     // Validate required fields
     if (!albumId || !fullName || !email) {
@@ -186,7 +197,7 @@ serve(async (req) => {
       );
     }
 
-    // Step 1: Insert participant with email
+    // Step 1: Insert participant with email and custom field values
     const { data: participant, error: participantError } = await supabaseAdmin
       .from("participants")
       .insert({
@@ -198,6 +209,7 @@ serve(async (req) => {
         role: role || "participant",
         quote: quote?.trim() || null,
         cohort: cohort?.trim() || null,
+        custom_field_values: customFieldValues,
       })
       .select()
       .single();

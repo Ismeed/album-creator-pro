@@ -65,6 +65,7 @@ export type Database = {
         Row: {
           album_type: Database["public"]["Enums"]["album_type"]
           created_at: string
+          custom_fields: Json | null
           id: string
           institution_name: string | null
           is_generated: boolean
@@ -74,11 +75,13 @@ export type Database = {
           price_per_participant: number | null
           required_fields: Json | null
           submission_deadline: string | null
+          template_id: string
           title: string
         }
         Insert: {
           album_type?: Database["public"]["Enums"]["album_type"]
           created_at?: string
+          custom_fields?: Json | null
           id?: string
           institution_name?: string | null
           is_generated?: boolean
@@ -88,11 +91,13 @@ export type Database = {
           price_per_participant?: number | null
           required_fields?: Json | null
           submission_deadline?: string | null
+          template_id?: string
           title: string
         }
         Update: {
           album_type?: Database["public"]["Enums"]["album_type"]
           created_at?: string
+          custom_fields?: Json | null
           id?: string
           institution_name?: string | null
           is_generated?: boolean
@@ -102,6 +107,7 @@ export type Database = {
           price_per_participant?: number | null
           required_fields?: Json | null
           submission_deadline?: string | null
+          template_id?: string
           title?: string
         }
         Relationships: [
@@ -139,6 +145,7 @@ export type Database = {
         Row: {
           cohort: string | null
           created_at: string
+          custom_field_values: Json | null
           department_or_class: string | null
           email: string | null
           full_name: string
@@ -151,6 +158,7 @@ export type Database = {
         Insert: {
           cohort?: string | null
           created_at?: string
+          custom_field_values?: Json | null
           department_or_class?: string | null
           email?: string | null
           full_name: string
@@ -163,6 +171,7 @@ export type Database = {
         Update: {
           cohort?: string | null
           created_at?: string
+          custom_field_values?: Json | null
           department_or_class?: string | null
           email?: string | null
           full_name?: string
@@ -293,6 +302,7 @@ export type Database = {
         Args: { _album_id: string }
         Returns: {
           album_type: Database["public"]["Enums"]["album_type"]
+          custom_fields: Json
           id: string
           institution_name: string
           is_locked: boolean
@@ -300,6 +310,7 @@ export type Database = {
           price_per_participant: number
           required_fields: Json
           submission_deadline: string
+          template_id: string
           title: string
         }[]
       }

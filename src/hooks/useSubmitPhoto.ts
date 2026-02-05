@@ -13,6 +13,7 @@ export interface SubmissionData {
   quote?: string;
   cohort?: string;
   photoFile: File;
+  customFieldValues?: Record<string, string>;
 }
 
 interface SubmissionResult {
@@ -56,6 +57,11 @@ export function useSubmitPhoto(album: PublicAlbum | null) {
       if (data.cohort) {
         formData.append("cohort", data.cohort.trim());
       }
+      
+      // Custom field values
+      if (data.customFieldValues && Object.keys(data.customFieldValues).length > 0) {
+        formData.append("customFieldValues", JSON.stringify(data.customFieldValues));
+      }
 
       setUploadProgress(30);
 
@@ -93,12 +99,30 @@ export function useSubmitPhoto(album: PublicAlbum | null) {
       setUploadProgress(80);
 
       if (!response.ok) {
-        let errorMessage = "Submission failed";
+        // Show user-friendly error message
+        let errorMessage = "Submission failed. Please refresh and try again.";
         try {
           const errorData = await response.json();
-          errorMessage = errorData.error || errorMessage;
+          // Only show specific errors for known user-fixable issues
+          if (errorData.error) {
+            const userFriendlyErrors = [
+              "Album not found",
+              "This album is locked",
+              "already submitted",
+              "submission deadline",
+              "Please enter a valid email",
+              "Full name must be",
+              "Photo file is required",
+              "Photo file is too large",
+              "Invalid file type",
+            ];
+            const isUserFriendly = userFriendlyErrors.some(e => errorData.error.includes(e));
+            if (isUserFriendly) {
+              errorMessage = errorData.error;
+            }
+          }
         } catch {
-          errorMessage = `Server error: ${response.status}`;
+          // Keep default error message
         }
         throw new Error(errorMessage);
       }

@@ -15,6 +15,8 @@ export type PublicAlbum = {
   payment_mode: Database["public"]["Enums"]["payment_mode"];
   price_per_participant: number | null;
   required_fields: Json | null;
+  template_id?: string;
+  custom_fields?: Json | null;
 };
 
 export function usePublicAlbum(albumId: string | undefined) {

@@ -2,27 +2,66 @@ import type { SubmissionWithParticipant } from "@/hooks/useSubmissions";
 import type { AlbumWithStats } from "@/hooks/useAlbums";
 import { parseSchemaConfig, type StoredSchemaConfig, type SchemaType } from "@/types/field-schemas";
 
+// Template tiers
+export type TemplateTier = "basic" | "premium";
+
 // Template configuration
 export interface AlbumTemplateConfig {
   id: string;
   name: string;
   description: string;
+  tier: TemplateTier;
   previewImage?: string;
 }
 
-// Available templates
+// Available templates - 5 total (2 basic, 3 premium)
 export const ALBUM_TEMPLATES: AlbumTemplateConfig[] = [
   {
     id: "classic",
     name: "Classic",
     description: "Clean, professional layout with centered photos and elegant typography",
+    tier: "basic",
+  },
+  {
+    id: "minimal",
+    name: "Minimal",
+    description: "Simple, distraction-free design with focus on photos",
+    tier: "basic",
   },
   {
     id: "modern",
     name: "Modern Grid",
     description: "Contemporary design with grid-based layout and bold headers",
+    tier: "premium",
+  },
+  {
+    id: "elegant",
+    name: "Elegant",
+    description: "Sophisticated design with ornate borders and decorative elements",
+    tier: "premium",
+  },
+  {
+    id: "vibrant",
+    name: "Vibrant",
+    description: "Colorful, dynamic layout with gradient accents and playful styling",
+    tier: "premium",
   },
 ];
+
+// Get template by ID
+export function getTemplateById(templateId: string): AlbumTemplateConfig | undefined {
+  return ALBUM_TEMPLATES.find((t) => t.id === templateId);
+}
+
+// Custom field definition (max 3 per album)
+export interface CustomField {
+  id: string;
+  label: string;
+}
+
+export const MAX_CUSTOM_FIELDS = 3;
+export const MAX_CUSTOM_FIELD_LABEL_LENGTH = 50;
+export const MAX_CUSTOM_FIELD_VALUE_LENGTH = 100;
 
 // Cover page data
 export interface CoverPageData {
@@ -47,6 +86,7 @@ export interface ParticipantEntry {
   cohort?: string;
   photoUrl: string;
   processedPhotoUrl?: string;
+  customFieldValues?: Record<string, string>;
 }
 
 // Full album data for template rendering
@@ -56,6 +96,7 @@ export interface AlbumTemplateData {
   templateId: string;
   generatedAt: string;
   schemaConfig?: StoredSchemaConfig;
+  customFields?: CustomField[];
 }
 
 // Album type labels for display
@@ -117,21 +158,35 @@ export function getDisplayFields(schemaConfig?: StoredSchemaConfig): string[] {
     });
 }
 
+// Parse custom fields from JSON
+export function parseCustomFields(customFieldsJson: unknown): CustomField[] {
+  if (!customFieldsJson || !Array.isArray(customFieldsJson)) return [];
+  
+  return customFieldsJson
+    .filter((f): f is { id: string; label: string } => 
+      typeof f === "object" && 
+      f !== null && 
+      typeof f.id === "string" && 
+      typeof f.label === "string"
+    )
+    .slice(0, MAX_CUSTOM_FIELDS);
+}
+
 // Transform raw data to template-ready format
 export function prepareAlbumTemplateData(
-  album: AlbumWithStats,
+  album: AlbumWithStats & { template_id?: string; custom_fields?: unknown },
   submissions: SubmissionWithParticipant[],
-  templateId: string = "classic"
+  templateId?: string
 ): AlbumTemplateData {
   // Parse schema config from album
   const schemaConfig = parseSchemaConfig(album.required_fields);
+  const customFields = parseCustomFields(album.custom_fields);
+  const finalTemplateId = templateId || album.template_id || "classic";
   
   // Filter for approved submissions only
   // Payments are disabled for testing, so we accept all payment statuses
   const eligibleSubmissions = submissions.filter((sub) => {
     const isApproved = sub.approval_status === "approved";
-    // Payment check disabled for MVP testing
-    // const isPaid = album.payment_mode === "organizer_pays" || sub.payment_status === "successful";
     return isApproved;
   });
 
@@ -143,19 +198,29 @@ export function prepareAlbumTemplateData(
   });
 
   // Transform to participant entries with all fields
-  const participants: ParticipantEntry[] = sortedSubmissions.map((sub) => ({
-    id: sub.id,
-    fullName: sub.participant?.full_name || "Unknown",
-    email: sub.participant?.email || undefined,
-    departmentOrClass: sub.participant?.department_or_class || undefined,
-    identifier: sub.participant?.identifier || undefined,
-    graduationYear: sub.participant?.graduation_year || undefined,
-    role: sub.participant?.role || undefined,
-    quote: sub.participant?.quote || undefined,
-    cohort: sub.participant?.cohort || undefined,
-    photoUrl: sub.photo_url,
-    processedPhotoUrl: sub.processed_photo_url || undefined,
-  }));
+  const participants: ParticipantEntry[] = sortedSubmissions.map((sub) => {
+    // Parse custom field values if present
+    let customFieldValues: Record<string, string> | undefined;
+    const rawCustomValues = (sub.participant as any)?.custom_field_values;
+    if (rawCustomValues && typeof rawCustomValues === "object") {
+      customFieldValues = rawCustomValues;
+    }
+    
+    return {
+      id: sub.id,
+      fullName: sub.participant?.full_name || "Unknown",
+      email: sub.participant?.email || undefined,
+      departmentOrClass: sub.participant?.department_or_class || undefined,
+      identifier: sub.participant?.identifier || undefined,
+      graduationYear: sub.participant?.graduation_year || undefined,
+      role: sub.participant?.role || undefined,
+      quote: sub.participant?.quote || undefined,
+      cohort: sub.participant?.cohort || undefined,
+      photoUrl: sub.photo_url,
+      processedPhotoUrl: sub.processed_photo_url || undefined,
+      customFieldValues,
+    };
+  });
 
   // Prepare cover data
   const currentYear = new Date().getFullYear().toString();
@@ -170,8 +235,9 @@ export function prepareAlbumTemplateData(
   return {
     cover,
     participants,
-    templateId,
+    templateId: finalTemplateId,
     generatedAt: new Date().toISOString(),
     schemaConfig: schemaConfig || undefined,
+    customFields: customFields.length > 0 ? customFields : undefined,
   };
 }
