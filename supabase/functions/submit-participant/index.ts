@@ -216,9 +216,27 @@ serve(async (req) => {
 
     if (participantError) {
       console.error("Error creating participant:", participantError);
+      // Provide specific error messages for known constraint violations
+      let errorMessage = "Failed to create participant. Please try again.";
+      if (participantError.code === "23514") {
+        // Check constraint violation - provide actionable message
+        if (participantError.message?.includes("full_name")) {
+          errorMessage = "Full name must be between 2 and 100 characters.";
+        } else if (participantError.message?.includes("quote")) {
+          errorMessage = "Quote is too long (max 200 characters).";
+        } else if (participantError.message?.includes("graduation_year")) {
+          errorMessage = "Graduation year must be in format YYYY or YYYY/YYYY.";
+        } else if (participantError.message?.includes("department")) {
+          errorMessage = "Department/Class is too long (max 100 characters).";
+        } else {
+          errorMessage = "Invalid field value. Please check your inputs.";
+        }
+      } else if (participantError.code === "23505") {
+        errorMessage = "A submission with this information already exists.";
+      }
       return new Response(
-        JSON.stringify({ error: "Failed to create participant" }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        JSON.stringify({ error: errorMessage }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 

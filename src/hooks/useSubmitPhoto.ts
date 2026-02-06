@@ -103,23 +103,9 @@ export function useSubmitPhoto(album: PublicAlbum | null) {
         let errorMessage = "Submission failed. Please refresh and try again.";
         try {
           const errorData = await response.json();
-          // Only show specific errors for known user-fixable issues
+          // Show specific errors from the backend
           if (errorData.error) {
-            const userFriendlyErrors = [
-              "Album not found",
-              "This album is locked",
-              "already submitted",
-              "submission deadline",
-              "Please enter a valid email",
-              "Full name must be",
-              "Photo file is required",
-              "Photo file is too large",
-              "Invalid file type",
-            ];
-            const isUserFriendly = userFriendlyErrors.some(e => errorData.error.includes(e));
-            if (isUserFriendly) {
-              errorMessage = errorData.error;
-            }
+            errorMessage = errorData.error;
           }
         } catch {
           // Keep default error message
