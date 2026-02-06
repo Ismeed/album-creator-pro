@@ -1,18 +1,24 @@
 import { Navigate, useLocation } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
+import { useOrganizerProfile } from "@/hooks/useOrganizerProfile";
 import { Loader2 } from "lucide-react";
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
+  requireVerification?: boolean;
 }
 
 /**
  * Protects routes that require organizer authentication.
  * Redirects to login if not authenticated.
+ * If requireVerification is true, also redirects to a verification-required page if not verified.
  */
-export const ProtectedRoute = ({ children }: ProtectedRouteProps) => {
-  const { user, loading } = useAuth();
+export const ProtectedRoute = ({ children, requireVerification = false }: ProtectedRouteProps) => {
+  const { user, loading: authLoading } = useAuth();
+  const { data: organizer, isLoading: profileLoading } = useOrganizerProfile();
   const location = useLocation();
+
+  const loading = authLoading || (user && profileLoading);
 
   if (loading) {
     return (
@@ -30,6 +36,11 @@ export const ProtectedRoute = ({ children }: ProtectedRouteProps) => {
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
 
+  // If verification is required and user is not verified, redirect to verification page
+  if (requireVerification && organizer && !organizer.is_verified) {
+    return <Navigate to="/verify-email-required" state={{ from: location }} replace />;
+  }
+
   return <>{children}</>;
 };
 
@@ -37,7 +48,7 @@ export const ProtectedRoute = ({ children }: ProtectedRouteProps) => {
  * Redirects authenticated users away from auth pages.
  * Used for login/signup pages.
  */
-export const PublicOnlyRoute = ({ children }: ProtectedRouteProps) => {
+export const PublicOnlyRoute = ({ children }: { children: React.ReactNode }) => {
   const { user, loading } = useAuth();
   const location = useLocation();
 

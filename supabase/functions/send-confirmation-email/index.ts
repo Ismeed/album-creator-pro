@@ -1,4 +1,4 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -21,9 +21,18 @@ serve(async (req) => {
   try {
     const resendApiKey = Deno.env.get("RESEND_API_KEY");
     
-    const { email, participantName, albumTitle, editToken, submissionId }: EmailRequest = await req.json();
+    const body = await req.json();
+    console.log("[send-confirmation-email] Request:", JSON.stringify({ 
+      email: body.email, 
+      participantName: body.participantName, 
+      albumTitle: body.albumTitle,
+      hasEditToken: !!body.editToken 
+    }));
+
+    const { email, participantName, albumTitle, editToken, submissionId }: EmailRequest = body;
 
     if (!email || !participantName || !albumTitle || !editToken || !submissionId) {
+      console.error("[send-confirmation-email] Missing required fields");
       return new Response(
         JSON.stringify({ error: "Missing required fields" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -35,6 +44,7 @@ serve(async (req) => {
 
     // If Resend is not configured, log the email (fallback for development)
     if (!resendApiKey) {
+      console.log("[send-confirmation-email] RESEND_API_KEY not configured - logging email instead");
       console.log("=".repeat(60));
       console.log("CONFIRMATION EMAIL (Resend not configured)");
       console.log("=".repeat(60));
@@ -53,7 +63,7 @@ serve(async (req) => {
       );
     }
 
-    console.log(`Sending confirmation email to: ${email}`);
+    console.log(`[send-confirmation-email] Sending confirmation email to: ${email}`);
 
     const emailHtml = `
 <!DOCTYPE html>
@@ -94,6 +104,11 @@ serve(async (req) => {
 </body>
 </html>`.trim();
 
+    // Use Resend onboarding sender for sandbox mode
+    const fromAddress = "Olex Studio <onboarding@resend.dev>";
+
+    console.log(`[send-confirmation-email] Calling Resend API from: ${fromAddress}`);
+
     const emailResponse = await fetch("https://api.resend.com/emails", {
       method: "POST",
       headers: {
@@ -101,34 +116,37 @@ serve(async (req) => {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        from: "Olex Studio <noreply@olexstudio.app>",
+        from: fromAddress,
         to: [email],
         subject: "✅ Olex Studio – Submission Successful",
         html: emailHtml,
       }),
     });
 
+    const responseText = await emailResponse.text();
+    console.log(`[send-confirmation-email] Resend API response (${emailResponse.status}):`, responseText);
+
     if (!emailResponse.ok) {
-      const errorText = await emailResponse.text();
-      console.error("Resend API error:", errorText);
-      throw new Error(`Email API error: ${emailResponse.status}`);
+      console.error("[send-confirmation-email] Resend API error:", responseText);
+      throw new Error(`Email API error: ${emailResponse.status} - ${responseText}`);
     }
 
-    const result = await emailResponse.json();
-    console.log("Confirmation email sent successfully:", result);
+    const result = JSON.parse(responseText);
+    console.log(`[send-confirmation-email] SUCCESS - Email ID: ${result.id}`);
 
     return new Response(
       JSON.stringify({ 
         success: true, 
         message: "Confirmation email sent",
         editUrl,
+        emailId: result.id,
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (error) {
-    console.error("Email error:", error);
+    console.error("[send-confirmation-email] Error:", error);
     return new Response(
-      JSON.stringify({ error: "Failed to send email" }),
+      JSON.stringify({ error: "Failed to send email", details: String(error) }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
