@@ -366,6 +366,18 @@ Deno.serve(async (req) => {
       );
     }
 
+    // SECURITY: Verify the authenticated user owns this album
+    if (album.organizer_id !== user.id) {
+      await supabase
+        .from("album_generations")
+        .update({ status: "failed", error_message: "Unauthorized" })
+        .eq("id", generationId);
+      return new Response(
+        JSON.stringify({ error: "Unauthorized - you do not own this album" }),
+        { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     // Validate album is locked
     if (!album.is_locked) {
       await supabase
