@@ -1,4 +1,4 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 
 const corsHeaders = {
@@ -14,16 +14,20 @@ serve(async (req) => {
   try {
     const resendApiKey = Deno.env.get("RESEND_API_KEY");
     if (!resendApiKey) {
-      console.error("RESEND_API_KEY not configured");
+      console.error("[resend-verification-email] RESEND_API_KEY not configured");
       return new Response(
         JSON.stringify({ error: "Email service not configured" }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    const { email } = await req.json();
+    const body = await req.json();
+    const email = body.email;
+    
+    console.log(`[resend-verification-email] Request for email: ${email}`);
 
     if (!email) {
+      console.error("[resend-verification-email] Email is required");
       return new Response(
         JSON.stringify({ error: "Email is required" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -44,8 +48,17 @@ serve(async (req) => {
       .eq("email", email.toLowerCase().trim())
       .single();
 
-    if (findError || !organizer) {
-      // Don't reveal if email exists
+    if (findError) {
+      console.log(`[resend-verification-email] Organizer not found: ${findError.message}`);
+      // Don't reveal if email exists for security
+      return new Response(
+        JSON.stringify({ success: true, message: "If this email exists, a verification link has been sent." }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    if (!organizer) {
+      console.log("[resend-verification-email] No organizer found for email");
       return new Response(
         JSON.stringify({ success: true, message: "If this email exists, a verification link has been sent." }),
         { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -53,6 +66,7 @@ serve(async (req) => {
     }
 
     if (organizer.is_verified) {
+      console.log(`[resend-verification-email] Organizer ${organizer.id} already verified`);
       return new Response(
         JSON.stringify({ error: "Email already verified" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -62,19 +76,31 @@ serve(async (req) => {
     // Generate new verification token if none exists
     let verificationToken = organizer.verification_token;
     if (!verificationToken) {
-      const { data: tokenData } = await supabaseAdmin.rpc("generate_verification_token");
+      console.log(`[resend-verification-email] Generating new token for organizer ${organizer.id}`);
+      const { data: tokenData, error: tokenError } = await supabaseAdmin.rpc("generate_verification_token");
+      
+      if (tokenError) {
+        console.error("[resend-verification-email] Failed to generate token:", tokenError);
+        throw new Error("Failed to generate verification token");
+      }
+      
       verificationToken = tokenData as string;
 
-      await supabaseAdmin
+      const { error: updateError } = await supabaseAdmin
         .from("organizers")
         .update({ verification_token: verificationToken })
         .eq("id", organizer.id);
+
+      if (updateError) {
+        console.error("[resend-verification-email] Failed to save token:", updateError);
+        throw new Error("Failed to save verification token");
+      }
     }
 
     const siteUrl = Deno.env.get("SITE_URL") || "https://olexstudio.lovable.app";
     const verifyUrl = `${siteUrl}/verify-email?token=${verificationToken}`;
 
-    console.log(`Resending verification email to: ${email}`);
+    console.log(`[resend-verification-email] Sending email to: ${email}, URL: ${verifyUrl}`);
 
     const emailHtml = `
 <!DOCTYPE html>
@@ -108,6 +134,11 @@ serve(async (req) => {
 </body>
 </html>`.trim();
 
+    // Use Resend onboarding sender for sandbox mode
+    const fromAddress = "Olex Studio <onboarding@resend.dev>";
+
+    console.log(`[resend-verification-email] Calling Resend API from: ${fromAddress}`);
+
     const emailResponse = await fetch("https://api.resend.com/emails", {
       method: "POST",
       headers: {
@@ -115,29 +146,32 @@ serve(async (req) => {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        from: "Olex Studio <noreply@olexstudio.app>",
+        from: fromAddress,
         to: [email],
         subject: "✅ Verify your Olex Studio account",
         html: emailHtml,
       }),
     });
 
+    const responseText = await emailResponse.text();
+    console.log(`[resend-verification-email] Resend API response (${emailResponse.status}):`, responseText);
+
     if (!emailResponse.ok) {
-      const errorText = await emailResponse.text();
-      console.error("Resend API error:", errorText);
-      throw new Error(`Email API error: ${emailResponse.status}`);
+      console.error("[resend-verification-email] Resend API error:", responseText);
+      throw new Error(`Email API error: ${emailResponse.status} - ${responseText}`);
     }
 
-    console.log("Verification email resent successfully");
+    const result = JSON.parse(responseText);
+    console.log(`[resend-verification-email] SUCCESS - Email ID: ${result.id}`);
 
     return new Response(
-      JSON.stringify({ success: true, message: "Verification email sent" }),
+      JSON.stringify({ success: true, message: "Verification email sent", emailId: result.id }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (error) {
-    console.error("Resend verification error:", error);
+    console.error("[resend-verification-email] Error:", error);
     return new Response(
-      JSON.stringify({ error: "Failed to send verification email" }),
+      JSON.stringify({ error: "Failed to send verification email", details: String(error) }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }

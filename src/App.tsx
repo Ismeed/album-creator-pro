@@ -15,6 +15,7 @@ import ParticipantPaymentPage from "./pages/ParticipantPaymentPage";
 import AlbumPreviewPage from "./pages/AlbumPreviewPage";
 import EditSubmissionPage from "./pages/EditSubmissionPage";
 import VerifyEmailPage from "./pages/VerifyEmailPage";
+import VerifyEmailRequiredPage from "./pages/VerifyEmailRequiredPage";
 import ForgotPasswordPage from "./pages/ForgotPasswordPage";
 import ResetPasswordPage from "./pages/ResetPasswordPage";
 import NotFound from "./pages/NotFound";
@@ -36,6 +37,16 @@ const App = () => (
             <Route path="/album/:albumId/payment" element={<ParticipantPaymentPage />} />
             <Route path="/verify-email" element={<VerifyEmailPage />} />
             <Route path="/demo" element={<ParticipantSubmitPage />} />
+            
+            {/* Verification required page (requires auth but not verification) */}
+            <Route
+              path="/verify-email-required"
+              element={
+                <ProtectedRoute requireVerification={false}>
+                  <VerifyEmailRequiredPage />
+                </ProtectedRoute>
+              }
+            />
             
             {/* Auth routes (redirect if logged in) */}
             <Route
@@ -63,11 +74,11 @@ const App = () => (
               }
             />
             
-            {/* Protected routes (require authentication) */}
+            {/* Protected routes (require authentication AND email verification) */}
             <Route
               path="/dashboard"
               element={
-                <ProtectedRoute>
+                <ProtectedRoute requireVerification={true}>
                   <DashboardPage />
                 </ProtectedRoute>
               }
@@ -75,7 +86,7 @@ const App = () => (
             <Route
               path="/album/new"
               element={
-                <ProtectedRoute>
+                <ProtectedRoute requireVerification={true}>
                   <CreateAlbumPage />
                 </ProtectedRoute>
               }
@@ -83,7 +94,7 @@ const App = () => (
             <Route
               path="/album/:albumId"
               element={
-                <ProtectedRoute>
+                <ProtectedRoute requireVerification={true}>
                   <AlbumDetailPage />
                 </ProtectedRoute>
               }
@@ -91,7 +102,7 @@ const App = () => (
             <Route
               path="/album/:albumId/edit"
               element={
-                <ProtectedRoute>
+                <ProtectedRoute requireVerification={true}>
                   <CreateAlbumPage />
                 </ProtectedRoute>
               }
@@ -99,7 +110,7 @@ const App = () => (
             <Route
               path="/album/:albumId/preview"
               element={
-                <ProtectedRoute>
+                <ProtectedRoute requireVerification={true}>
                   <AlbumPreviewPage />
                 </ProtectedRoute>
               }

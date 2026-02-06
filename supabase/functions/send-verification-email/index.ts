@@ -1,4 +1,4 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -18,17 +18,22 @@ serve(async (req) => {
 
   try {
     const resendApiKey = Deno.env.get("RESEND_API_KEY");
+    
     if (!resendApiKey) {
-      console.error("RESEND_API_KEY not configured");
+      console.error("[send-verification-email] RESEND_API_KEY not configured");
       return new Response(
         JSON.stringify({ error: "Email service not configured" }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    const { email, fullName, verificationToken }: VerificationEmailRequest = await req.json();
+    const body = await req.json();
+    console.log("[send-verification-email] Request body:", JSON.stringify({ email: body.email, fullName: body.fullName, hasToken: !!body.verificationToken }));
+
+    const { email, fullName, verificationToken }: VerificationEmailRequest = body;
 
     if (!email || !fullName || !verificationToken) {
+      console.error("[send-verification-email] Missing required fields:", { email: !!email, fullName: !!fullName, verificationToken: !!verificationToken });
       return new Response(
         JSON.stringify({ error: "Missing required fields" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -38,7 +43,7 @@ serve(async (req) => {
     const siteUrl = Deno.env.get("SITE_URL") || "https://olexstudio.lovable.app";
     const verifyUrl = `${siteUrl}/verify-email?token=${verificationToken}`;
 
-    console.log(`Sending verification email to: ${email}`);
+    console.log(`[send-verification-email] Preparing email to: ${email}, verify URL: ${verifyUrl}`);
 
     const emailHtml = `
 <!DOCTYPE html>
@@ -72,6 +77,11 @@ serve(async (req) => {
 </body>
 </html>`.trim();
 
+    // Use Resend onboarding sender for sandbox mode, or verified domain
+    const fromAddress = "Olex Studio <onboarding@resend.dev>";
+
+    console.log(`[send-verification-email] Sending via Resend from: ${fromAddress}`);
+
     const emailResponse = await fetch("https://api.resend.com/emails", {
       method: "POST",
       headers: {
@@ -79,33 +89,36 @@ serve(async (req) => {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        from: "Olex Studio <noreply@olexstudio.app>",
+        from: fromAddress,
         to: [email],
         subject: "✅ Verify your Olex Studio account",
         html: emailHtml,
       }),
     });
 
+    const responseText = await emailResponse.text();
+    console.log(`[send-verification-email] Resend API response (${emailResponse.status}):`, responseText);
+
     if (!emailResponse.ok) {
-      const errorText = await emailResponse.text();
-      console.error("Resend API error:", errorText);
-      throw new Error(`Email API error: ${emailResponse.status}`);
+      console.error("[send-verification-email] Resend API error:", responseText);
+      throw new Error(`Email API error: ${emailResponse.status} - ${responseText}`);
     }
 
-    const result = await emailResponse.json();
-    console.log("Verification email sent successfully:", result);
+    const result = JSON.parse(responseText);
+    console.log(`[send-verification-email] SUCCESS - Email ID: ${result.id}`);
 
     return new Response(
       JSON.stringify({ 
         success: true, 
         message: "Verification email sent",
+        emailId: result.id,
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (error) {
-    console.error("Email error:", error);
+    console.error("[send-verification-email] Error:", error);
     return new Response(
-      JSON.stringify({ error: "Failed to send verification email" }),
+      JSON.stringify({ error: "Failed to send verification email", details: String(error) }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }

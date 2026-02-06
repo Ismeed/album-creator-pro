@@ -26,3 +26,21 @@ verify_jwt = false
 
 [functions.reset-password]
 verify_jwt = false
+
+[functions.verify-email]
+verify_jwt = false
+
+[functions.send-verification-email]
+verify_jwt = false
+
+[functions.resend-verification-email]
+verify_jwt = false
+
+[functions.send-confirmation-email]
+verify_jwt = false
+
+[functions.get-submission-by-token]
+verify_jwt = false
+
+[functions.update-submission]
+verify_jwt = false
