@@ -15,6 +15,7 @@ import ParticipantPaymentPage from "./pages/ParticipantPaymentPage";
 import AlbumPreviewPage from "./pages/AlbumPreviewPage";
 import EditSubmissionPage from "./pages/EditSubmissionPage";
 import VerifyEmailPage from "./pages/VerifyEmailPage";
+import VerifiedSuccessPage from "./pages/VerifiedSuccessPage";
 import VerifyEmailRequiredPage from "./pages/VerifyEmailRequiredPage";
 import ForgotPasswordPage from "./pages/ForgotPasswordPage";
 import ResetPasswordPage from "./pages/ResetPasswordPage";
@@ -36,6 +37,8 @@ const App = () => (
             <Route path="/edit-submission/:token" element={<EditSubmissionPage />} />
             <Route path="/album/:albumId/payment" element={<ParticipantPaymentPage />} />
             <Route path="/verify-email" element={<VerifyEmailPage />} />
+            <Route path="/verify" element={<VerifyEmailPage />} />
+            <Route path="/verified-success" element={<VerifiedSuccessPage />} />
             <Route path="/demo" element={<ParticipantSubmitPage />} />
             
             {/* Verification required page (requires auth but not verification) */}

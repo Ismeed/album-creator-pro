@@ -5,6 +5,8 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+const FROM_ADDRESS = "Olex <no-reply@olexstudio.com>";
+
 interface VerificationEmailRequest {
   email: string;
   fullName: string;
@@ -40,8 +42,8 @@ serve(async (req) => {
       );
     }
 
-    const siteUrl = Deno.env.get("SITE_URL") || "https://olexstudio.lovable.app";
-    const verifyUrl = `${siteUrl}/verify-email?token=${verificationToken}`;
+    const siteUrl = Deno.env.get("SITE_URL") || "https://olexstudio.com";
+    const verifyUrl = `${siteUrl}/verify?token=${verificationToken}`;
 
     console.log(`[send-verification-email] Preparing email to: ${email}, verify URL: ${verifyUrl}`);
 
@@ -77,10 +79,7 @@ serve(async (req) => {
 </body>
 </html>`.trim();
 
-    // Use Resend onboarding sender for sandbox mode, or verified domain
-    const fromAddress = "Olex Studio <onboarding@resend.dev>";
-
-    console.log(`[send-verification-email] Sending via Resend from: ${fromAddress}`);
+    console.log(`[send-verification-email] Sending via Resend from: ${FROM_ADDRESS}`);
 
     const emailResponse = await fetch("https://api.resend.com/emails", {
       method: "POST",
@@ -89,7 +88,7 @@ serve(async (req) => {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        from: fromAddress,
+        from: FROM_ADDRESS,
         to: [email],
         subject: "✅ Verify your Olex Studio account",
         html: emailHtml,

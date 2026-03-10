@@ -6,6 +6,8 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+const FROM_ADDRESS = "Olex <no-reply@olexstudio.com>";
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -48,17 +50,8 @@ serve(async (req) => {
       .eq("email", email.toLowerCase().trim())
       .single();
 
-    if (findError) {
-      console.log(`[resend-verification-email] Organizer not found: ${findError.message}`);
-      // Don't reveal if email exists for security
-      return new Response(
-        JSON.stringify({ success: true, message: "If this email exists, a verification link has been sent." }),
-        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
-
-    if (!organizer) {
-      console.log("[resend-verification-email] No organizer found for email");
+    if (findError || !organizer) {
+      console.log(`[resend-verification-email] Organizer not found: ${findError?.message}`);
       return new Response(
         JSON.stringify({ success: true, message: "If this email exists, a verification link has been sent." }),
         { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -73,7 +66,7 @@ serve(async (req) => {
       );
     }
 
-    // Generate new verification token if none exists
+    // Generate new verification token
     let verificationToken = organizer.verification_token;
     if (!verificationToken) {
       console.log(`[resend-verification-email] Generating new token for organizer ${organizer.id}`);
@@ -97,8 +90,8 @@ serve(async (req) => {
       }
     }
 
-    const siteUrl = Deno.env.get("SITE_URL") || "https://olexstudio.lovable.app";
-    const verifyUrl = `${siteUrl}/verify-email?token=${verificationToken}`;
+    const siteUrl = Deno.env.get("SITE_URL") || "https://olexstudio.com";
+    const verifyUrl = `${siteUrl}/verify?token=${verificationToken}`;
 
     console.log(`[resend-verification-email] Sending email to: ${email}, URL: ${verifyUrl}`);
 
@@ -134,10 +127,7 @@ serve(async (req) => {
 </body>
 </html>`.trim();
 
-    // Use Resend onboarding sender for sandbox mode
-    const fromAddress = "Olex Studio <onboarding@resend.dev>";
-
-    console.log(`[resend-verification-email] Calling Resend API from: ${fromAddress}`);
+    console.log(`[resend-verification-email] Calling Resend API from: ${FROM_ADDRESS}`);
 
     const emailResponse = await fetch("https://api.resend.com/emails", {
       method: "POST",
@@ -146,7 +136,7 @@ serve(async (req) => {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        from: fromAddress,
+        from: FROM_ADDRESS,
         to: [email],
         subject: "✅ Verify your Olex Studio account",
         html: emailHtml,
