@@ -291,22 +291,28 @@ serve(async (req) => {
       );
     }
 
-    // Step 5: Send confirmation email (fire and forget)
-    const sendEmailUrl = `${supabaseUrl}/functions/v1/send-confirmation-email`;
-    fetch(sendEmailUrl, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${serviceRoleKey}`,
-      },
-      body: JSON.stringify({
-        email: email.trim().toLowerCase(),
-        participantName: fullName.trim(),
-        albumTitle: album.title,
-        editToken: editToken,
-        submissionId: submission.id,
-      }),
-    }).catch((err) => console.error("Failed to trigger confirmation email:", err));
+    // Step 5: Send confirmation email with await and error handling
+    try {
+      const sendEmailUrl = `${supabaseUrl}/functions/v1/send-confirmation-email`;
+      const emailResp = await fetch(sendEmailUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${serviceRoleKey}`,
+        },
+        body: JSON.stringify({
+          email: email.trim().toLowerCase(),
+          participantName: fullName.trim(),
+          albumTitle: album.title,
+          editToken: editToken,
+          submissionId: submission.id,
+        }),
+      });
+      const emailResult = await emailResp.json();
+      console.log("[submit-participant] Confirmation email result:", JSON.stringify(emailResult));
+    } catch (emailErr) {
+      console.error("[submit-participant] Failed to send confirmation email:", emailErr);
+    }
 
     return new Response(
       JSON.stringify({
