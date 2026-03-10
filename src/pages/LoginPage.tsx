@@ -7,9 +7,10 @@ import { z } from "zod";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { ArrowLeft, Mail, Lock, Eye, EyeOff, User, Loader2 } from "lucide-react";
+import { ArrowLeft, Mail, Lock, Eye, EyeOff, User, Loader2, RefreshCw } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
+import { supabase } from "@/integrations/supabase/client";
 
 // Validation schemas
 const loginSchema = z.object({
@@ -36,14 +37,20 @@ const signupSchema = z.object({
   password: z
     .string()
     .min(1, "Password is required")
-    .min(6, "Password must be at least 6 characters")
+    .min(8, "Password must be at least 8 characters")
     .max(72, "Password is too long"),
+  confirmPassword: z
+    .string()
+    .min(1, "Please confirm your password"),
   fullName: z
     .string()
     .trim()
     .min(1, "Full name is required")
     .min(2, "Name must be at least 2 characters")
     .max(100, "Name is too long"),
+}).refine((data) => data.password === data.confirmPassword, {
+  message: "Passwords do not match",
+  path: ["confirmPassword"],
 });
 
 type LoginFormData = z.infer<typeof loginSchema>;
@@ -63,7 +70,7 @@ function getAuthErrorMessage(message: string): string {
     return "Please verify your email address.";
   }
   if (message.includes("Password should be")) {
-    return "Password must be at least 6 characters.";
+    return "Password must be at least 8 characters.";
   }
   return message;
 }
@@ -75,6 +82,9 @@ const LoginForm = () => {
   const { toast } = useToast();
   const [showPassword, setShowPassword] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showUnverifiedMessage, setShowUnverifiedMessage] = useState(false);
+  const [unverifiedEmail, setUnverifiedEmail] = useState("");
+  const [isResending, setIsResending] = useState(false);
 
   const from = location.state?.from?.pathname || "/dashboard";
 
@@ -87,12 +97,36 @@ const LoginForm = () => {
     defaultValues: { email: "", password: "" },
   });
 
+  const handleResendVerification = async () => {
+    if (!unverifiedEmail) return;
+    setIsResending(true);
+    try {
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+      const apiKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+      const response = await fetch(`${supabaseUrl}/functions/v1/resend-verification-email`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", apikey: apiKey },
+        body: JSON.stringify({ email: unverifiedEmail }),
+      });
+      if (response.ok) {
+        toast({ title: "Email sent!", description: "Check your inbox for the verification link." });
+      } else {
+        toast({ title: "Failed to send", description: "Please try again later.", variant: "destructive" });
+      }
+    } catch {
+      toast({ title: "Error", description: "Could not resend verification email.", variant: "destructive" });
+    } finally {
+      setIsResending(false);
+    }
+  };
+
   const onSubmit = async (data: LoginFormData) => {
     setIsSubmitting(true);
+    setShowUnverifiedMessage(false);
     const { error } = await signIn(data.email, data.password);
-    setIsSubmitting(false);
-
+    
     if (error) {
+      setIsSubmitting(false);
       toast({
         title: "Login failed",
         description: getAuthErrorMessage(error.message),
@@ -101,6 +135,26 @@ const LoginForm = () => {
       return;
     }
 
+    // Check if user is verified
+    try {
+      const { data: organizer } = await supabase
+        .from("organizers")
+        .select("is_verified")
+        .single();
+
+      if (organizer && !organizer.is_verified) {
+        // Sign the user out — they cannot proceed unverified
+        await supabase.auth.signOut();
+        setIsSubmitting(false);
+        setUnverifiedEmail(data.email);
+        setShowUnverifiedMessage(true);
+        return;
+      }
+    } catch (err) {
+      console.error("Error checking verification status:", err);
+    }
+
+    setIsSubmitting(false);
     toast({
       title: "Welcome back!",
       description: "You've successfully signed in.",
@@ -110,6 +164,28 @@ const LoginForm = () => {
 
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
+      {showUnverifiedMessage && (
+        <div className="bg-destructive/10 border border-destructive/30 rounded-lg p-4 space-y-3">
+          <p className="text-sm font-medium text-destructive">
+            Please verify your email before logging in.
+          </p>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={handleResendVerification}
+            disabled={isResending}
+            className="w-full"
+          >
+            {isResending ? (
+              <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Sending...</>
+            ) : (
+              <><RefreshCw className="w-4 h-4 mr-2" />Resend Verification Email</>
+            )}
+          </Button>
+        </div>
+      )}
+
       {/* Email */}
       <div className="space-y-2">
         <Label htmlFor="email" className="text-sm font-medium">
@@ -189,61 +265,109 @@ const LoginForm = () => {
 };
 
 const SignupForm = () => {
-  const navigate = useNavigate();
   const { signUp } = useAuth();
   const { toast } = useToast();
   const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [signupSuccess, setSignupSuccess] = useState(false);
 
   const {
     register,
     handleSubmit,
-    formState: { errors },
+    watch,
+    formState: { errors, isValid },
   } = useForm<SignupFormData>({
     resolver: zodResolver(signupSchema),
-    defaultValues: { email: "", password: "", fullName: "" },
+    defaultValues: { email: "", password: "", confirmPassword: "", fullName: "" },
+    mode: "onChange",
   });
+
+  const password = watch("password");
+  const confirmPassword = watch("confirmPassword");
+  const passwordMismatch = confirmPassword.length > 0 && password !== confirmPassword;
 
   const onSubmit = async (data: SignupFormData) => {
     setIsSubmitting(true);
-    const { error } = await signUp(data.email, data.password, data.fullName);
-    setIsSubmitting(false);
 
-    if (error) {
-      toast({
-        title: "Registration failed",
-        description: getAuthErrorMessage(error.message),
-        variant: "destructive",
-      });
-      return;
-    }
-
-    // Send verification email via edge function
+    // Check if email already exists
     try {
       const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
       const apiKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
-      
-      if (supabaseUrl && apiKey) {
-        // Trigger verification email (fire and forget - don't block signup)
-        fetch(`${supabaseUrl}/functions/v1/resend-verification-email`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            apikey: apiKey,
-          },
-          body: JSON.stringify({ email: data.email }),
-        }).catch(console.error);
-      }
-    } catch (err) {
-      console.error("Failed to trigger verification email:", err);
-    }
 
-    toast({
-      title: "Account created!",
-      description: "Please check your email to verify your account.",
-    });
-    navigate("/dashboard", { replace: true });
+      // Try signup via Supabase Auth
+      const { error } = await signUp(data.email, data.password, data.fullName);
+
+      if (error) {
+        setIsSubmitting(false);
+        if (error.message.includes("User already registered")) {
+          // Check verification status
+          toast({
+            title: "Email already in use",
+            description: "Please login instead.",
+            variant: "destructive",
+          });
+        } else {
+          toast({
+            title: "Registration failed",
+            description: getAuthErrorMessage(error.message),
+            variant: "destructive",
+          });
+        }
+        return;
+      }
+
+      // Sign out immediately — user must verify email first
+      await supabase.auth.signOut();
+
+      // Fire verification email
+      try {
+        if (supabaseUrl && apiKey) {
+          const resp = await fetch(`${supabaseUrl}/functions/v1/resend-verification-email`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              apikey: apiKey,
+            },
+            body: JSON.stringify({ email: data.email }),
+          });
+          const result = await resp.json();
+          console.log("[signup] Verification email result:", result);
+        }
+      } catch (err) {
+        console.error("Failed to trigger verification email:", err);
+      }
+
+      setIsSubmitting(false);
+      setSignupSuccess(true);
+      toast({
+        title: "Account created!",
+        description: "Please check your email to verify your account before logging in.",
+      });
+    } catch (err) {
+      setIsSubmitting(false);
+      console.error("Signup error:", err);
+      toast({
+        title: "Error",
+        description: "Something went wrong. Please try again.",
+        variant: "destructive",
+      });
+    }
   };
+
+  if (signupSuccess) {
+    return (
+      <div className="text-center space-y-4 py-4">
+        <div className="w-16 h-16 rounded-full bg-accent/10 flex items-center justify-center mx-auto">
+          <Mail className="w-8 h-8 text-accent" />
+        </div>
+        <h3 className="text-lg font-semibold text-foreground">Check your email</h3>
+        <p className="text-sm text-muted-foreground max-w-xs mx-auto">
+          We've sent a verification link to your email address. Please verify your email before logging in.
+        </p>
+      </div>
+    );
+  }
 
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
@@ -314,13 +438,43 @@ const SignupForm = () => {
         )}
       </div>
 
+      {/* Confirm Password */}
+      <div className="space-y-2">
+        <Label htmlFor="signup-confirm-password" className="text-sm font-medium">
+          Confirm Password
+        </Label>
+        <div className="relative">
+          <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
+          <Input
+            id="signup-confirm-password"
+            type={showConfirmPassword ? "text" : "password"}
+            placeholder="••••••••"
+            {...register("confirmPassword")}
+            className={`pl-11 pr-11 h-12 ${passwordMismatch ? "border-destructive focus-visible:ring-destructive" : ""}`}
+          />
+          <button
+            type="button"
+            onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+          >
+            {showConfirmPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+          </button>
+        </div>
+        {passwordMismatch && (
+          <p className="text-sm text-destructive font-medium">Passwords do not match</p>
+        )}
+        {errors.confirmPassword && !passwordMismatch && (
+          <p className="text-sm text-destructive">{errors.confirmPassword.message}</p>
+        )}
+      </div>
+
       {/* Submit Button */}
       <Button
         type="submit"
         variant="accent"
         size="lg"
         className="w-full"
-        disabled={isSubmitting}
+        disabled={isSubmitting || !isValid || passwordMismatch}
       >
         {isSubmitting ? (
           <>

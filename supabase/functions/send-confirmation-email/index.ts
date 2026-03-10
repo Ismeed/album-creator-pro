@@ -5,6 +5,8 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+const FROM_ADDRESS = "Olex <no-reply@olexstudio.com>";
+
 interface EmailRequest {
   email: string;
   participantName: string;
@@ -39,26 +41,20 @@ serve(async (req) => {
       );
     }
 
-    const siteUrl = Deno.env.get("SITE_URL") || "https://olexstudio.lovable.app";
+    const siteUrl = Deno.env.get("SITE_URL") || "https://olexstudio.com";
     const editUrl = `${siteUrl}/edit-submission/${editToken}`;
 
-    // If Resend is not configured, log the email (fallback for development)
     if (!resendApiKey) {
       console.log("[send-confirmation-email] RESEND_API_KEY not configured - logging email instead");
       console.log("=".repeat(60));
-      console.log("CONFIRMATION EMAIL (Resend not configured)");
-      console.log("=".repeat(60));
       console.log(`To: ${email}`);
       console.log(`Subject: ✅ Olex Studio – Submission Successful`);
+      console.log(`Submission ID: ${submissionId}`);
       console.log(`Edit URL: ${editUrl}`);
       console.log("=".repeat(60));
 
       return new Response(
-        JSON.stringify({ 
-          success: true, 
-          message: "Email logged (Resend not configured)",
-          editUrl,
-        }),
+        JSON.stringify({ success: true, message: "Email logged (Resend not configured)", editUrl }),
         { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
@@ -82,6 +78,8 @@ serve(async (req) => {
   
   <p>Your submission to <strong>"${albumTitle}"</strong> was successful! 🎉</p>
   
+  <p><strong>Submission ID:</strong> ${submissionId}</p>
+  
   <p>You can edit your response using the link below:</p>
   
   <div style="text-align: center; margin: 30px 0;">
@@ -104,10 +102,7 @@ serve(async (req) => {
 </body>
 </html>`.trim();
 
-    // Use Resend onboarding sender for sandbox mode
-    const fromAddress = "Olex Studio <onboarding@resend.dev>";
-
-    console.log(`[send-confirmation-email] Calling Resend API from: ${fromAddress}`);
+    console.log(`[send-confirmation-email] Calling Resend API from: ${FROM_ADDRESS}`);
 
     const emailResponse = await fetch("https://api.resend.com/emails", {
       method: "POST",
@@ -116,7 +111,7 @@ serve(async (req) => {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        from: fromAddress,
+        from: FROM_ADDRESS,
         to: [email],
         subject: "✅ Olex Studio – Submission Successful",
         html: emailHtml,
@@ -135,12 +130,7 @@ serve(async (req) => {
     console.log(`[send-confirmation-email] SUCCESS - Email ID: ${result.id}`);
 
     return new Response(
-      JSON.stringify({ 
-        success: true, 
-        message: "Confirmation email sent",
-        editUrl,
-        emailId: result.id,
-      }),
+      JSON.stringify({ success: true, message: "Confirmation email sent", editUrl, emailId: result.id }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (error) {

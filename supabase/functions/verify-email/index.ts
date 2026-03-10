@@ -69,13 +69,13 @@ serve(async (req) => {
       );
     }
 
-    // Update organizer as verified
+    // Update organizer as verified and invalidate the token (single-use)
     const { error: updateError } = await supabaseAdmin
       .from("organizers")
       .update({
         is_verified: true,
         verified_at: new Date().toISOString(),
-        verification_token: null, // Clear token after use (single-use)
+        verification_token: null,
       })
       .eq("id", organizer.id);
 
