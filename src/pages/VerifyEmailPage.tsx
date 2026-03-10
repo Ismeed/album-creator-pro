@@ -2,15 +2,16 @@ import { useEffect, useState } from "react";
 import { useSearchParams, useNavigate, Link } from "react-router-dom";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
-import { Loader2, XCircle } from "lucide-react";
+import { Loader2, XCircle, CheckCircle, ArrowRight } from "lucide-react";
 
 const VerifyEmailPage = () => {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const token = searchParams.get("token");
   
-  const [status, setStatus] = useState<"loading" | "error">("loading");
+  const [status, setStatus] = useState<"loading" | "success" | "error">("loading");
   const [error, setError] = useState<string | null>(null);
+  const [countdown, setCountdown] = useState(4);
 
   const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
   const apiKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
@@ -19,13 +20,13 @@ const VerifyEmailPage = () => {
     const verifyEmail = async () => {
       if (!token) {
         setStatus("error");
-        setError("Verification token is missing");
+        setError("Verification token is missing.");
         return;
       }
 
       if (!supabaseUrl || !apiKey) {
         setStatus("error");
-        setError("Configuration error");
+        setError("Configuration error. Please contact support.");
         return;
       }
 
@@ -41,21 +42,39 @@ const VerifyEmailPage = () => {
 
         if (!response.ok) {
           setStatus("error");
-          setError(data.error || "Verification failed");
+          setError(data.error || "Verification failed. The link may be invalid or expired.");
           return;
         }
 
-        // On success or already verified, redirect to success page
-        navigate("/verified-success", { replace: true });
+        // Success!
+        setStatus("success");
       } catch (err) {
         console.error("Verification error:", err);
         setStatus("error");
-        setError("Unable to verify email. Please try again.");
+        setError("Unable to verify email. Please check your connection and try again.");
       }
     };
 
     verifyEmail();
-  }, [token, supabaseUrl, apiKey, navigate]);
+  }, [token, supabaseUrl, apiKey]);
+
+  // Countdown and redirect on success
+  useEffect(() => {
+    if (status !== "success") return;
+
+    const interval = setInterval(() => {
+      setCountdown((prev) => {
+        if (prev <= 1) {
+          clearInterval(interval);
+          navigate("/login", { replace: true });
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [status, navigate]);
 
   return (
     <main className="min-h-[100dvh] bg-background safe-top safe-bottom flex items-center justify-center">
@@ -68,6 +87,39 @@ const VerifyEmailPage = () => {
           >
             <Loader2 className="w-12 h-12 animate-spin text-accent mx-auto" />
             <p className="text-muted-foreground">Verifying your email...</p>
+          </motion.div>
+        )}
+
+        {status === "success" && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="space-y-6"
+          >
+            <motion.div
+              initial={{ scale: 0 }}
+              animate={{ scale: 1 }}
+              transition={{ type: "spring", delay: 0.2 }}
+              className="w-20 h-20 rounded-full bg-accent/10 flex items-center justify-center mx-auto"
+            >
+              <CheckCircle className="w-10 h-10 text-accent" />
+            </motion.div>
+
+            <div>
+              <h1 className="text-2xl font-bold text-foreground mb-2">
+                ✅ Your email has been verified!
+              </h1>
+              <p className="text-muted-foreground max-w-xs mx-auto">
+                Redirecting to login in {countdown} second{countdown !== 1 ? "s" : ""}…
+              </p>
+            </div>
+
+            <Button asChild variant="outline" size="lg">
+              <Link to="/login">
+                Sign In Now
+                <ArrowRight className="w-5 h-5 ml-2" />
+              </Link>
+            </Button>
           </motion.div>
         )}
 
