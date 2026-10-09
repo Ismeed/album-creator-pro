@@ -97,11 +97,18 @@ function TemplateCard({ template, isSelected, onSelect, disabled }: TemplateCard
         <Crown className="absolute top-2 right-2 w-4 h-4 text-warning" />
       )}
 
-      {/* Template preview placeholder */}
-      <div className="aspect-[3/4] rounded-lg bg-muted/50 mb-2 flex items-center justify-center">
-        <span className="text-2xl font-bold text-muted-foreground/30">
-          {template.name.charAt(0)}
-        </span>
+      {/* Art-directed template preview */}
+      <div className={`aspect-[3/4] rounded-lg mb-2 overflow-hidden flex items-end p-3 ${
+        template.id === "elevate" ? "bg-[#f5f0e8] border border-[#d9c9aa]" :
+        template.id === "momentum" ? "bg-[#171512]" :
+        template.id === "signature" ? "bg-[#e8e5df] border-l-4 border-[#22211f]" :
+        "bg-muted/50"
+      }`}>
+        <div className={template.id === "momentum" ? "text-[#c7a76b]" : "text-foreground/70"}>
+          <div className="mb-1 h-px w-8 bg-current opacity-60" />
+          <span className="font-serif text-lg">{template.name}</span>
+          <div className="mt-1 text-[8px] uppercase tracking-[0.2em] opacity-60">Premium edition</div>
+        </div>
       </div>
 
       <h5 className="font-medium text-foreground text-sm">{template.name}</h5>

@@ -34,19 +34,19 @@ export const ALBUM_TEMPLATES: AlbumTemplateConfig[] = [
   {
     id: "elevate",
     name: "Elevate",
-    description: "Modern card-based layout with larger photos, elegant spacing and hierarchy.",
+    description: "Editorial ivory, fine borders, and quiet luxury for a timeless collection.",
     tier: "premium",
   },
   {
     id: "momentum",
     name: "Momentum",
-    description: "Bold header section with accent color highlights. Contemporary, energetic layout.",
+    description: "Midnight charcoal, warm gold, and a dramatic private-archive mood.",
     tier: "premium",
   },
   {
     id: "signature",
     name: "Signature",
-    description: "Full-width photo emphasis with yearbook-style presentation. Flagship premium design.",
+    description: "Gallery-inspired monochrome pages with museum-grade photo emphasis.",
     tier: "premium",
   },
 ];
