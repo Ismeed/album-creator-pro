@@ -4,156 +4,58 @@ import { getDisplayFields } from "@/types/album-templates";
 import { useSignedPhotoUrl } from "@/hooks/useSignedPhotoUrl";
 import { Loader2 } from "lucide-react";
 
-interface ElevateCardProps {
-  participant: ParticipantEntry;
-  schemaConfig?: StoredSchemaConfig;
-}
-
 function getFieldValue(participant: ParticipantEntry, fieldKey: string): string | undefined {
   const value = participant[fieldKey as keyof ParticipantEntry];
   return typeof value === "string" ? value : undefined;
 }
 
+interface ElevateCardProps { participant: ParticipantEntry; schemaConfig?: StoredSchemaConfig }
+
 export function ElevateCard({ participant, schemaConfig }: ElevateCardProps) {
   const rawPhotoUrl = participant.processedPhotoUrl || participant.photoUrl;
   const { signedUrl: photoUrl, isLoading } = useSignedPhotoUrl(rawPhotoUrl);
   const displayFields = getDisplayFields(schemaConfig);
-
-  if (isLoading || !photoUrl) {
-    return (
-      <div className="participant-card bg-card rounded-xl overflow-hidden shadow-md border border-border">
-        <div className="w-full aspect-[3/4] bg-muted flex items-center justify-center">
-          <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
-        </div>
-        <div className="p-4 space-y-2">
-          <div className="h-4 bg-muted rounded animate-pulse w-3/4" />
-          <div className="h-3 bg-muted rounded animate-pulse w-1/2" />
-        </div>
-      </div>
-    );
-  }
+  const fields = displayFields.map((key) => getFieldValue(participant, key)).filter(Boolean).slice(0, 2);
 
   return (
-    <div className="participant-card bg-card rounded-xl overflow-hidden shadow-md border border-border">
-      {/* Large photo */}
-      <div className="w-full aspect-[3/4] bg-muted">
-        <img
-          src={photoUrl}
-          alt={participant.fullName}
-          className="w-full h-full object-cover object-top"
-          loading="lazy"
-        />
-      </div>
-
-      {/* Elegant info section */}
-      <div className="p-4">
-        <h3 className="text-base font-bold text-foreground leading-tight mb-1">
-          {participant.fullName}
-        </h3>
-        <div className="space-y-0.5">
-          {displayFields.slice(0, 2).map(fieldKey => {
-            const value = getFieldValue(participant, fieldKey);
-            if (!value) return null;
-            return (
-              <p key={fieldKey} className="text-sm text-muted-foreground">
-                {value}
-              </p>
-            );
-          })}
+    <article className="participant-card overflow-hidden border border-[#d9c9aa] bg-[#f8f4ec] shadow-[0_14px_35px_-20px_rgba(75,52,25,0.55)]">
+      <div className="relative aspect-[3/4] bg-[#e7dfd2]">
+        {isLoading || !photoUrl ? <Loader2 className="absolute left-1/2 top-1/2 animate-spin text-[#8d7652]" /> : <img src={photoUrl} alt={participant.fullName} className="h-full w-full object-cover object-top" loading="lazy" />}
+        <div className="absolute inset-x-4 bottom-4 border border-white/60 bg-[#f8f4ec]/90 p-3 backdrop-blur-sm">
+          <h3 className="font-serif text-lg leading-tight text-[#2d2924]">{participant.fullName}</h3>
+          {fields[0] && <p className="mt-1 text-[10px] uppercase tracking-[0.2em] text-[#8d7652]">{fields[0]}</p>}
         </div>
-        {participant.quote && (
-          <p className="text-xs text-muted-foreground italic mt-3 border-l-2 border-primary/30 pl-2">
-            "{participant.quote}"
-          </p>
-        )}
       </div>
-    </div>
+      <div className="flex min-h-20 flex-col justify-center px-4 py-3 text-center">
+        {fields[1] && <p className="text-xs text-[#756b60]">{fields[1]}</p>}
+        {participant.quote && <p className="mt-2 line-clamp-2 font-serif text-xs italic text-[#8e8172]">“{participant.quote}”</p>}
+      </div>
+    </article>
   );
 }
 
-interface ElevateCoverProps {
-  title: string;
-  institutionName?: string;
-  albumType: string;
-  year: string;
-  logoUrl?: string;
-}
+interface ElevateCoverProps { title: string; institutionName?: string; albumType: string; year: string; logoUrl?: string }
 
 export function ElevateCover({ title, institutionName, albumType, year, logoUrl }: ElevateCoverProps) {
   return (
-    <div className="album-page album-cover flex flex-col min-h-[297mm] bg-background text-foreground print:break-after-page">
-      {/* Top accent */}
-      <div className="h-1.5 bg-primary w-full" />
-
-      <div className="flex-1 flex flex-col items-center justify-center p-16 text-center">
-        {logoUrl && (
-          <div className="mb-10">
-            <img src={logoUrl} alt="Logo" className="w-32 h-32 object-contain mx-auto" />
-          </div>
-        )}
-
-        <div className="inline-block px-5 py-2 bg-primary/10 rounded-full mb-8">
-          <span className="text-base font-medium text-primary">{year}</span>
-        </div>
-
-        <h1 className="text-5xl font-extrabold tracking-tight mb-4 text-foreground">
-          {title}
-        </h1>
-
-        <div className="space-y-2">
-          {institutionName && (
-            <p className="text-xl text-muted-foreground">{institutionName}</p>
-          )}
-          <p className="text-lg font-medium text-primary">{albumType}</p>
-        </div>
+    <div className="album-page album-cover relative flex min-h-[297mm] flex-col overflow-hidden bg-[#f5f0e8] text-[#2d2924] print:break-after-page">
+      <div className="absolute inset-7 border border-[#cbb994]" />
+      <div className="relative flex flex-1 flex-col items-center justify-center px-16 text-center">
+        <p className="mb-8 text-[11px] uppercase tracking-[0.45em] text-[#8d7652]">{albumType}</p>
+        {logoUrl && <img src={logoUrl} alt="Logo" className="mb-8 size-24 object-contain" />}
+        <div className="mb-8 h-px w-16 bg-[#b89d6d]" />
+        <h1 className="max-w-3xl font-serif text-6xl font-medium leading-[0.95] tracking-[-0.04em]">{title}</h1>
+        {institutionName && <p className="mt-6 text-lg tracking-[0.18em] text-[#756b60]">{institutionName}</p>}
+        <div className="mt-10 flex items-center gap-4 text-xs uppercase tracking-[0.35em] text-[#8d7652]"><span>{year}</span><span className="size-1 rounded-full bg-[#b89d6d]" /><span>Edition</span></div>
       </div>
-
-      {/* Bottom accent */}
-      <div className="h-1.5 bg-primary w-full" />
+      <div className="relative mx-auto mb-12 h-px w-24 bg-[#b89d6d]" />
     </div>
   );
 }
 
-interface ElevateGridProps {
-  participants: ParticipantEntry[];
-  schemaConfig?: StoredSchemaConfig;
-}
-
+interface ElevateGridProps { participants: ParticipantEntry[]; schemaConfig?: StoredSchemaConfig }
 export function ElevateGrid({ participants, schemaConfig }: ElevateGridProps) {
-  const columnsPerPage = 3;
-  const rowsPerPage = 2;
-  const participantsPerPage = columnsPerPage * rowsPerPage;
-
   const pages: ParticipantEntry[][] = [];
-  for (let i = 0; i < participants.length; i += participantsPerPage) {
-    pages.push(participants.slice(i, i + participantsPerPage));
-  }
-
-  return (
-    <div className="participant-pages">
-      {pages.map((pageParticipants, pageIndex) => (
-        <div
-          key={pageIndex}
-          className="album-page participant-page min-h-[297mm] bg-background p-10 print:break-after-page"
-        >
-          <div className="flex items-center justify-between mb-8 pb-4 border-b border-border">
-            <h2 className="text-sm font-semibold text-foreground uppercase tracking-wider">
-              Participants
-            </h2>
-            <span className="text-sm text-muted-foreground">
-              Page {pageIndex + 1} of {pages.length}
-            </span>
-          </div>
-          <div
-            className="grid gap-8"
-            style={{ gridTemplateColumns: `repeat(${columnsPerPage}, minmax(0, 1fr))` }}
-          >
-            {pageParticipants.map((participant) => (
-              <ElevateCard key={participant.id} participant={participant} schemaConfig={schemaConfig} />
-            ))}
-          </div>
-        </div>
-      ))}
-    </div>
-  );
+  for (let i = 0; i < participants.length; i += 6) pages.push(participants.slice(i, i + 6));
+  return <div className="participant-pages">{pages.map((page, index) => <div key={index} className="album-page min-h-[297mm] bg-[#f5f0e8] p-12 print:break-after-page"><div className="mb-8 flex items-end justify-between border-b border-[#d9c9aa] pb-4"><div><p className="text-[10px] uppercase tracking-[0.35em] text-[#8d7652]">{String(index + 1).padStart(2, "0")}</p><h2 className="mt-1 font-serif text-2xl text-[#2d2924]">The collection</h2></div><span className="text-[10px] uppercase tracking-[0.2em] text-[#8d7652]">{pages.length} pages</span></div><div className="grid grid-cols-3 gap-6">{page.map((participant) => <ElevateCard key={participant.id} participant={participant} schemaConfig={schemaConfig} />)}</div></div>)}</div>;
 }

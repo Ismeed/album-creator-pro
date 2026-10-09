@@ -4,165 +4,19 @@ import { getDisplayFields } from "@/types/album-templates";
 import { useSignedPhotoUrl } from "@/hooks/useSignedPhotoUrl";
 import { Loader2 } from "lucide-react";
 
-interface MomentumCardProps {
-  participant: ParticipantEntry;
-  schemaConfig?: StoredSchemaConfig;
+function valueOf(participant: ParticipantEntry, key: string) { const value = participant[key as keyof ParticipantEntry]; return typeof value === "string" ? value : undefined; }
+
+export function MomentumCard({ participant, schemaConfig }: { participant: ParticipantEntry; schemaConfig?: StoredSchemaConfig }) {
+  const { signedUrl, isLoading } = useSignedPhotoUrl(participant.processedPhotoUrl || participant.photoUrl);
+  const fields = getDisplayFields(schemaConfig).map((key) => valueOf(participant, key)).filter(Boolean).slice(0, 2);
+  return <article className="participant-card relative overflow-hidden border border-[#3b332a] bg-[#171512] text-[#f3eadb] shadow-[0_16px_35px_-22px_rgba(0,0,0,0.8)]"><div className="flex gap-4 p-4">{isLoading || !signedUrl ? <div className="flex size-24 items-center justify-center bg-[#2a251f]"><Loader2 className="animate-spin text-[#c7a76b]" /></div> : <img src={signedUrl} alt={participant.fullName} className="size-24 object-cover object-top" loading="lazy" />}<div className="min-w-0 flex-1"><p className="mb-2 text-[9px] uppercase tracking-[0.3em] text-[#c7a76b]">Profile</p><h3 className="truncate font-serif text-lg">{participant.fullName}</h3>{fields.map((field) => <p key={field} className="mt-1 truncate text-xs text-[#bdb1a0]">{field}</p>)}</div></div>{participant.quote && <p className="border-t border-[#3b332a] px-4 py-3 font-serif text-xs italic text-[#bdb1a0]">“{participant.quote}”</p>}</article>;
 }
 
-function getFieldValue(participant: ParticipantEntry, fieldKey: string): string | undefined {
-  const value = participant[fieldKey as keyof ParticipantEntry];
-  return typeof value === "string" ? value : undefined;
+export function MomentumCover({ title, institutionName, albumType, year, logoUrl }: { title: string; institutionName?: string; albumType: string; year: string; logoUrl?: string }) {
+  return <div className="album-page album-cover relative flex min-h-[297mm] flex-col overflow-hidden bg-[#171512] text-[#f3eadb] print:break-after-page"><div className="absolute -right-24 top-20 size-80 rounded-full border border-[#c7a76b]/30" /><div className="absolute -right-16 top-28 size-64 rounded-full border border-[#c7a76b]/20" /><div className="relative flex flex-1 flex-col justify-between p-16"><div className="flex items-center justify-between text-[10px] uppercase tracking-[0.35em] text-[#c7a76b]"><span>Vol. {year}</span><span>Archive</span></div><div className="max-w-2xl">{logoUrl && <img src={logoUrl} alt="Logo" className="mb-8 size-20 object-contain" />}<p className="mb-5 text-xs uppercase tracking-[0.45em] text-[#c7a76b]">{albumType}</p><h1 className="font-serif text-7xl font-medium leading-[0.9] tracking-[-0.04em]">{title}</h1>{institutionName && <p className="mt-8 max-w-md border-l border-[#c7a76b] pl-4 text-lg text-[#bdb1a0]">{institutionName}</p>}</div><div className="flex items-center gap-4 text-xs uppercase tracking-[0.3em] text-[#c7a76b]"><span className="h-px w-16 bg-[#c7a76b]" /><span>Private collection</span></div></div></div>;
 }
 
-export function MomentumCard({ participant, schemaConfig }: MomentumCardProps) {
-  const rawPhotoUrl = participant.processedPhotoUrl || participant.photoUrl;
-  const { signedUrl: photoUrl, isLoading } = useSignedPhotoUrl(rawPhotoUrl);
-  const displayFields = getDisplayFields(schemaConfig);
-
-  if (isLoading || !photoUrl) {
-    return (
-      <div className="participant-card relative bg-card rounded-lg overflow-hidden border-l-4 border-primary">
-        <div className="flex gap-4 p-4">
-          <div className="w-20 h-24 bg-muted rounded flex items-center justify-center flex-shrink-0">
-            <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
-          </div>
-          <div className="flex-1 space-y-2">
-            <div className="h-4 bg-muted rounded animate-pulse w-3/4" />
-            <div className="h-3 bg-muted rounded animate-pulse w-1/2" />
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="participant-card relative bg-card rounded-lg overflow-hidden border-l-4 border-primary shadow-sm">
-      <div className="flex gap-4 p-4">
-        {/* Photo */}
-        <div className="w-20 h-24 bg-muted rounded overflow-hidden flex-shrink-0">
-          <img
-            src={photoUrl}
-            alt={participant.fullName}
-            className="w-full h-full object-cover object-top"
-            loading="lazy"
-          />
-        </div>
-
-        {/* Info */}
-        <div className="flex-1 min-w-0">
-          <h3 className="text-sm font-bold text-foreground leading-tight mb-1 truncate">
-            {participant.fullName}
-          </h3>
-          {displayFields.slice(0, 2).map(fieldKey => {
-            const value = getFieldValue(participant, fieldKey);
-            if (!value) return null;
-            const isId = fieldKey === "identifier";
-            return (
-              <p 
-                key={fieldKey} 
-                className={isId ? "text-xs font-mono text-primary" : "text-xs text-muted-foreground truncate"}
-              >
-                {isId ? `#${value}` : value}
-              </p>
-            );
-          })}
-          {participant.quote && (
-            <p className="text-[10px] text-muted-foreground italic mt-2 line-clamp-2">
-              "{participant.quote}"
-            </p>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-interface MomentumCoverProps {
-  title: string;
-  institutionName?: string;
-  albumType: string;
-  year: string;
-  logoUrl?: string;
-}
-
-export function MomentumCover({ title, institutionName, albumType, year, logoUrl }: MomentumCoverProps) {
-  return (
-    <div className="album-page album-cover flex flex-col min-h-[297mm] bg-background text-foreground print:break-after-page">
-      {/* Bold header with accent */}
-      <div className="bg-primary text-primary-foreground py-16 px-12">
-        <div className="max-w-2xl mx-auto text-center">
-          {logoUrl && (
-            <div className="mb-8">
-              <img src={logoUrl} alt="Logo" className="w-20 h-20 object-contain mx-auto" />
-            </div>
-          )}
-          <h1 className="text-5xl font-black tracking-tight mb-4">
-            {title}
-          </h1>
-          {institutionName && (
-            <p className="text-xl opacity-90">{institutionName}</p>
-          )}
-        </div>
-      </div>
-
-      {/* Content area */}
-      <div className="flex-1 flex flex-col items-center justify-center p-16">
-        <div className="text-center">
-          <p className="text-2xl font-bold text-foreground mb-4">{albumType}</p>
-          <div className="inline-block px-8 py-3 bg-primary/10 rounded-full">
-            <span className="text-3xl font-bold text-primary">{year}</span>
-          </div>
-        </div>
-      </div>
-
-      {/* Bottom accent bar */}
-      <div className="h-4 bg-primary" />
-    </div>
-  );
-}
-
-interface MomentumGridProps {
-  participants: ParticipantEntry[];
-  schemaConfig?: StoredSchemaConfig;
-}
-
-export function MomentumGrid({ participants, schemaConfig }: MomentumGridProps) {
-  const columnsPerPage = 2;
-  const rowsPerPage = 5;
-  const participantsPerPage = columnsPerPage * rowsPerPage;
-
-  const pages: ParticipantEntry[][] = [];
-  for (let i = 0; i < participants.length; i += participantsPerPage) {
-    pages.push(participants.slice(i, i + participantsPerPage));
-  }
-
-  return (
-    <div className="participant-pages">
-      {pages.map((pageParticipants, pageIndex) => (
-        <div
-          key={pageIndex}
-          className="album-page participant-page min-h-[297mm] bg-background p-8 print:break-after-page"
-        >
-          {/* Bold header */}
-          <div className="flex items-center gap-4 mb-6 pb-4 border-b-2 border-primary">
-            <div className="w-1 h-8 bg-primary rounded-full" />
-            <h2 className="text-lg font-bold text-foreground uppercase tracking-wide">
-              Participants
-            </h2>
-            <span className="ml-auto text-sm font-medium text-muted-foreground">
-              {pageIndex + 1} / {pages.length}
-            </span>
-          </div>
-          <div
-            className="grid gap-4"
-            style={{ gridTemplateColumns: `repeat(${columnsPerPage}, minmax(0, 1fr))` }}
-          >
-            {pageParticipants.map((participant) => (
-              <MomentumCard key={participant.id} participant={participant} schemaConfig={schemaConfig} />
-            ))}
-          </div>
-        </div>
-      ))}
-    </div>
-  );
+export function MomentumGrid({ participants, schemaConfig }: { participants: ParticipantEntry[]; schemaConfig?: StoredSchemaConfig }) {
+  const pages: ParticipantEntry[][] = []; for (let i = 0; i < participants.length; i += 8) pages.push(participants.slice(i, i + 8));
+  return <div className="participant-pages">{pages.map((page, index) => <div key={index} className="album-page min-h-[297mm] bg-[#171512] p-10 text-[#f3eadb] print:break-after-page"><div className="mb-8 flex items-center justify-between border-b border-[#3b332a] pb-5"><div><p className="text-[10px] uppercase tracking-[0.35em] text-[#c7a76b]">Archive / {String(index + 1).padStart(2, "0")}</p><h2 className="mt-2 font-serif text-3xl">The people</h2></div><span className="text-xs text-[#bdb1a0]">{String(page.length).padStart(2, "0")} profiles</span></div><div className="grid grid-cols-2 gap-5">{page.map((participant) => <MomentumCard key={participant.id} participant={participant} schemaConfig={schemaConfig} />)}</div></div>)}</div>;
 }
